@@ -10,9 +10,7 @@
 #define PINNED 0
 #endif
 
-// Matriz por Matriz
-// C(NxM) <- A(NxP) * B (PxM)
-__global__ void Kernel11(int N, int M, int P, float *A, float *B, float *C) {
+__global__ void matMult(int N, int M, int P, float *A, float *B, float *C) {
 
   __shared__ float sA[SIZE][SIZE];
   __shared__ float sB[SIZE][SIZE];
@@ -24,7 +22,6 @@ __global__ void Kernel11(int N, int M, int P, float *A, float *B, float *C) {
   int k, m;
 
   float tmp = 0.0;
-  //for (m=0; m < P-SIZE+1; m=m+SIZE) {
   for (m=0; m < P-SIZE; m=m+SIZE) {
     if (row<N) sA[ty][tx] = A[row*P + m + tx];
     if (col<M) sB[ty][tx] = B[col + (m + ty)*M];
@@ -140,7 +137,7 @@ int main(int argc, char** argv)
   cudaEventSynchronize(E1);
   
   // Ejecutar el kernel 
-  Kernel11<<<dimGrid, dimBlock>>>(N, M, P, d_A, d_B, d_C);
+  matMult<<<dimGrid, dimBlock>>>(N, M, P, d_A, d_B, d_C);
 
   cudaEventRecord(E2, 0);
   cudaEventSynchronize(E2);
