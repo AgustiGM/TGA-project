@@ -42,6 +42,13 @@ __global__ void matMult(int N, int M, int P, float *A, float *B, float *C) {
 
 }
 
+__global__ void sigmoid(int N, float *A) {
+
+}
+
+__global__ void backprop(int N, float *A) {
+
+}
 
 
 void InitM(int N, int M, float *Mat);
@@ -103,6 +110,12 @@ int main(int argc, char** argv)
   cudaEventCreate(&E1);
   cudaEventCreate(&E2);
   cudaEventCreate(&E3);
+  
+  // Matrius en calen tantes com nombres de hidden layers + la d'outputs.
+  // Mida de l'input: nFeatures+1xnSamples. (Trasposada de nSamplesxnFeatures+1)
+  // Mida de les matrius dels pesos. Primera: HiddenSizexnFeatures+1. i així fins a totes les hiddens (per simplificar totes tindran la mateixa mida)
+  // Mida output: nHiddenSizexnOutputs
+  // seq operacions: outputxhiddennxhiddenn-1...xhidden1xinputs. (ordre de multiplicació de matrius)
 
   if (PINNED) {
     // Obtiene Memoria [pinned] en el host
@@ -117,7 +130,8 @@ int main(int argc, char** argv)
     h_C = (float*) malloc(numBytesC); 
   }
 
-  // Inicializa las matrices
+  // Inicialitzem les matrius dels pesos amb nombres aleatoris.
+
   InitM(N, P, h_A);
   InitM(P, M, h_B);
 
