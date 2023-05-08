@@ -1,142 +1,144 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
+#include "nnfunctions.h"
+#include "utils.h"
 
 #ifndef PINNED
-#define PINNED 1
+#define PINNED 0
 #endif
-
-#ifndef DUMMY
-#define DUMMY 30 
-#endif
-
-// Suma de Vectores ponderados
-// C(N) <- a*A(N) + b*B(N)
-
-__global__ void Kernel00 (int N, float a, float b, float *A, float *B, float *C) {
-
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  int j;  
-  if (i<N) {
-      C[i] = a*A[i] + b*B[i];
-      for (j=0; j<DUMMY; j++) 
-        C[i] += a*A[i] + b*B[i];
-  }
-}
-
-
-
-void InitV(int N, float *V);
-int TestsumV(int N, float a, float b, float *A, float *B, float *C);
-
 
 // Invocacion:
-// ./ejecutable TAM test
-// TAM es el la dimension del vector medido en K ( N = TAM * 1024)
+// ./ejecutable N M P test
+// TAM es el la dimension de las matrices
 // test == 'Y', comprueba que el resultado sea correcto
 // test == 'N', NO comprueba que el resultado (Util para tomar tiempos)
-// Por defecto, tam = 2048, test == 'N'
+// Por defecto, N = 639, M = 641, P = 1023, test == 'N'
 
 int main(int argc, char** argv)
 {
-  unsigned int N;
-  unsigned int numBytes;
-  unsigned int nBlocks, nThreads;
+  unsigned int N, M, P;
+  unsigned int numBytesC, numBytesA, numBytesB;
+  unsigned int nBlocksN, nBlocksM, nThreads;
  
-  float TiempoTotal;
-  float TiempoKernel, TiempoHtoD, TiempoDtoH;
+  float TiempoTotal, TiempoKernel;
   cudaEvent_t E0, E1, E2, E3;
 
   float *h_A, *h_B, *h_C;
   float *d_A, *d_B, *d_C;
-  float a = 0.3;
-  float b = 0.7;
 
   char test;
 
-  // Dimension del vector y comprobacion resultado
-  if (argc == 1)      { test = 'N';      N = 1024 * 2048; }
-  else if (argc == 2) { test = 'N';      N = 1024 * atoi(argv[1]); }
-  else if (argc == 3) { test = *argv[2]; N = 1024 * atoi(argv[1]); }
-  else { printf("Usage: ./exe TAM test\n"); exit(0); }
+  // Dimension de las matrices NxM, NxP, PxM y comprobacion resultado
+  if (argc == 5) { 
+     N = atoi(argv[1]); 
+     M = atoi(argv[2]); 
+     P = atoi(argv[3]); 
+     test = *argv[4]; 
+  }
+  else { printf("Usage: ./exe N M P test\n"); exit(0); }
 
-  // numero de Threads
-  nThreads = 1024;
+  int count, gpu;
+  // Buscar GPU de forma aleatoria
+  cudaGetDeviceCount(&count);
+  srand(time(NULL));
+  gpu = (rand()>>3) % count;
+  cudaSetDevice(gpu);
+       
+  // numero de Threads en cada dimension 
+  nThreads = SIZE;
 
   // numero de Blocks en cada dimension 
-  nBlocks = (N+nThreads-1)/nThreads; 
+  nBlocksN = (N+nThreads-1)/nThreads; 
+  nBlocksM = (M+nThreads-1)/nThreads; 
   
-  numBytes = nBlocks * nThreads * sizeof(float);
+  numBytesC = N * M * sizeof(float);
+  numBytesA = N * P * sizeof(float);
+  numBytesB = P * M * sizeof(float);
+
+  dim3 dimGrid(nBlocksM, nBlocksN, 1);
+  dim3 dimBlock(nThreads, nThreads, 1);
 
   cudaEventCreate(&E0);
   cudaEventCreate(&E1);
   cudaEventCreate(&E2);
   cudaEventCreate(&E3);
+  
+  // Matrius en calen tantes com nombres de hidden layers + la d'outputs.
+  // Mida de l'input: nFeatures+1xnSamples. (Trasposada de nSamplesxnFeatures+1)
+  // Mida de les matrius dels pesos. Primera: HiddenSizexnFeatures+1. i així fins a totes les hiddens (per simplificar totes tindran la mateixa mida)
+  // Mida output: nHiddenSizexnOutputs
+  // seq operacions: outputxhiddennxhiddenn-1...xhidden1xinputs. (ordre de multiplicació de matrius)
 
   if (PINNED) {
     // Obtiene Memoria [pinned] en el host
-    cudaMallocHost((float**)&h_A, numBytes); 
-    cudaMallocHost((float**)&h_B, numBytes); 
-    cudaMallocHost((float**)&h_C, numBytes); 
+    cudaMallocHost((float**)&h_A, numBytesA); 
+    cudaMallocHost((float**)&h_B, numBytesB); 
+    cudaMallocHost((float**)&h_C, numBytesC); 
   }
   else {
     // Obtener Memoria en el host
-    h_A = (float*) malloc(numBytes); 
-    h_B = (float*) malloc(numBytes); 
-    h_C = (float*) malloc(numBytes); 
+    h_A = (float*) malloc(numBytesA); 
+    h_B = (float*) malloc(numBytesB); 
+    h_C = (float*) malloc(numBytesC); 
   }
 
-  // Inicializa las matrices
-  InitV(N, h_A);
-  InitV(N, h_B);
+  // Inicialitzem les matrius dels pesos amb nombres aleatoris.
 
-  // Obtener Memoria en el device
-  cudaMalloc((float**)&d_A, numBytes); 
-  cudaMalloc((float**)&d_B, numBytes); 
-  cudaMalloc((float**)&d_C, numBytes); 
+  InitM(N, P, h_A);
+  InitM(P, M, h_B);
 
   cudaEventRecord(E0, 0);
+  cudaEventSynchronize(E0);
   
+  // Obtener Memoria en el device
+  cudaMalloc((float**)&d_A, numBytesA); 
+  cudaMalloc((float**)&d_B, numBytesB); 
+  cudaMalloc((float**)&d_C, numBytesC); 
+
   // Copiar datos desde el host en el device 
-  cudaMemcpy(d_A, h_A, numBytes, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_B, h_B, numBytes, cudaMemcpyHostToDevice);
-  
+  cudaMemcpy(d_A, h_A, numBytesA, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_B, h_B, numBytesB, cudaMemcpyHostToDevice);
+
   cudaEventRecord(E1, 0);
+  cudaEventSynchronize(E1);
+  
   // Ejecutar el kernel 
-  Kernel00<<<nBlocks, nThreads>>>(N, a, b, d_A, d_B, d_C);
+  matMult<<<dimGrid, dimBlock>>>(N, M, P, d_A, d_B, d_C);
+
   cudaEventRecord(E2, 0);
+  cudaEventSynchronize(E2);
 
   // Obtener el resultado desde el host 
-  cudaMemcpy(h_C, d_C, numBytes, cudaMemcpyDeviceToHost); 
-
-  cudaEventRecord(E3, 0); cudaEventSynchronize(E3);
+  cudaMemcpy(h_C, d_C, numBytesC, cudaMemcpyDeviceToHost); 
 
   // Liberar Memoria del device 
   cudaFree(d_A);
   cudaFree(d_B);
   cudaFree(d_C);
 
-  cudaEventElapsedTime(&TiempoTotal, E0, E3);
+  cudaEventRecord(E3, 0);
+  cudaEventSynchronize(E3);
+
+  cudaEventElapsedTime(&TiempoTotal,  E0, E3);
   cudaEventElapsedTime(&TiempoKernel, E1, E2);
-  cudaEventElapsedTime(&TiempoHtoD, E0, E1);
-  cudaEventElapsedTime(&TiempoDtoH, E2, E3);
-  printf("\nKERNEL 00: NO - Streams\n");
-  printf("Dimension Problema: %d\n", N);
-  printf("Invocacion Kernel <<<nBlocks, nKernels>>> (N): <<<%d, %d>>> (%d)\n", nBlocks, nThreads, N);
-  printf("nKernels: %d\n", 1);
+  printf("\nKERNEL 11\n");
+  printf("GPU utilizada: %d\n", gpu);
+  printf("Dimensiones: %dx%d <- %dx%d * %dx%d\n", N, M, N, P, P, M);
+  printf("nThreads: %dx%d (%d)\n", nThreads, nThreads, nThreads * nThreads);
+  printf("nBlocks: %dx%d (%d)\n", nBlocksM, nBlocksN, nBlocksN*nBlocksM);
   if (PINNED) printf("Usando Pinned Memory\n");
          else printf("NO usa Pinned Memory\n");
-  printf("Tiempo Global (00): %4.6f milseg\n", TiempoTotal);
-  printf("Rendimiento Global (00): %4.2f GFLOPS\n", ((3.0 + 4.0*DUMMY) * (float) N) / (1000000.0 * TiempoTotal));
-  printf("Tiempo Kernel (00): %4.6f milseg\n", TiempoKernel);
-  printf("Tiempo HtoD (00): %4.6f milseg\n", TiempoHtoD);
-  printf("Tiempo DtoH (00): %4.6f milseg\n", TiempoDtoH);
+  printf("Tiempo Global: %4.6f milseg\n", TiempoTotal);
+  printf("Tiempo Kernel: %4.6f milseg\n", TiempoKernel);
+  printf("Rendimiento Global: %4.2f GFLOPS\n", (2.0 * (float) N * (float) M * (float) P) / (1000000.0 * TiempoTotal));
+  printf("Rendimiento Kernel: %4.2f GFLOPS\n", (2.0 * (float) N * (float) M * (float) P) / (1000000.0 * TiempoKernel));
 
-  cudaEventDestroy(E0); cudaEventDestroy(E3);
-
+  cudaEventDestroy(E0); cudaEventDestroy(E1); cudaEventDestroy(E2); cudaEventDestroy(E3);
 
   if (test == 'N')
     printf ("NO TEST\n");
-  else  if (TestsumV(N, a, b, h_A, h_B, h_C))
+  else  if (TestMM(N, M, P, h_A, h_B, h_C))
     printf ("TEST PASS\n");
   else
     printf ("TEST FAIL\n");
@@ -148,41 +150,8 @@ int main(int argc, char** argv)
     free(h_A); free(h_B); free(h_C);
   }
 
-  cudaDeviceReset();
-
 }
 
 
-void InitV(int N, float *V) {
-   int i;
-   for (i=0; i<N; i++) 
-     V[i] = rand() / (float) RAND_MAX;
-   
-}
 
-int error(float a, float b) {
-  float tmp;
-
-  tmp = abs(a-b) / abs(min(a,b));
-
-  if (tmp > 0.0001) return 1;
-  else  return 0;
-
-}
-
-int TestsumV(int N, float a, float b, float *A, float *B, float *C) {
-   int i, j;
-   float tmp;
-   for (i=0; i<N; i++) {
-       tmp = a*A[i] + b*B[i]; 
-      for (j=0; j<DUMMY; j++) 
-        tmp += a*A[i] + b*B[i];
-       if (error(tmp, C[i])) {
-         printf ("%d: %f - %f = %f \n", i, tmp, C[i], abs(tmp - C[i]));
-         return 0;
-       }
-   }
-   
-   return 1;
-}
 
