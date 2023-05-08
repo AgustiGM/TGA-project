@@ -1,59 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-
-#ifndef SIZE
-#define SIZE 32
-#endif
+#include "nnfunctions.h"
+#include "utils.h"
 
 #ifndef PINNED
 #define PINNED 0
 #endif
-
-__global__ void matMult(int N, int M, int P, float *A, float *B, float *C) {
-
-  __shared__ float sA[SIZE][SIZE];
-  __shared__ float sB[SIZE][SIZE];
-
-  int bx = blockIdx.x;  int by = blockIdx.y;
-  int tx = threadIdx.x; int ty = threadIdx.y;
-  int row = by * SIZE + ty;
-  int col = bx * SIZE + tx;
-  int k, m;
-
-  float tmp = 0.0;
-  for (m=0; m < P-SIZE; m=m+SIZE) {
-    if (row<N) sA[ty][tx] = A[row*P + m + tx];
-    if (col<M) sB[ty][tx] = B[col + (m + ty)*M];
-    __syncthreads();
-
-    for (k=0; k<SIZE; k++)
-      tmp += sA[ty][k] * sB[k][tx];
-
-    __syncthreads();
-  }
-  if (row<N) sA[ty][tx] = A[row*P + m + tx];
-  if (col<M) sB[ty][tx] = B[col + (m + ty)*M];
-  __syncthreads();
-  for (k=0; m<P; k++, m++)
-    tmp += sA[ty][k] * sB[k][tx];
-
-  if (row<N && col<M) C[row*M+col] = tmp;
-
-}
-
-__global__ void sigmoid(int N, float *A) {
-
-}
-
-__global__ void backprop(int N, float *A) {
-
-}
-
-
-void InitM(int N, int M, float *Mat);
-int TestMM(int N, int M, int P, float *A, float *B, float *C);
-
 
 // Invocacion:
 // ./ejecutable N M P test
@@ -200,37 +153,5 @@ int main(int argc, char** argv)
 }
 
 
-void InitM(int N, int M, float *Mat) {
-   int i;
-   for (i=0; i<N*M; i++) 
-     Mat[i] = rand() / (float) RAND_MAX;
-   
-}
 
-int error(float a, float b) {
-  float tmp;
-
-  tmp = abs(a-b) / abs(min(a,b));
-
-  if (isnan(tmp) || tmp > 0.0001) return 1;
-  else  return 0;
-
-}
-
-int TestMM(int N, int M, int P, float *A, float *B, float *C) {
-   int i, j, k;
-   float tmp;
-   for (i=0; i<N; i++)
-     for (j=0; j<M; j++) {
-       tmp = 0.0;
-       for (k=0; k<P; k++) 
-         tmp = tmp + A[i*P+k] * B[k*M+j]; 
-       if (error(tmp, C[i*M+j])) {
-         printf ("%d:%d: %f - %f = %f \n", i, j, tmp, C[i*M+j], abs(tmp - C[i*M+j]));
-         return 0;
-       }
-     }
-   
-   return 1;
-}
 
