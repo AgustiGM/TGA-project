@@ -54,5 +54,16 @@ __global__ void reLU(int N, float *A) {
 }
 
 __global__ void backprop(int N, float *A) {
+  
+
+}
+
+__global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
+                            float *input, float *hiddenWeights, float *activationL1, float *outputWeights, float *result) {
+
+  matMult(batchSize, nHiddenLayer, nFeatures, input, hiddenWeights, activationL1);
+  sigmoid(mida, activationL1);
+  matMult(batchSize, nOutput, nHiddenLayer, activationL1, outputWeights, result);
+  sigmoid(mida, result);
 
 }

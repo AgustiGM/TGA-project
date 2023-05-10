@@ -40,7 +40,7 @@ $(EXE01): $(OBJ01)
 
 all:	$(EXE00) $(EXE01)
 
-test: $(EXE01)
+test:	$(EXE01)
 
 clean:
 	rm -rf *.o main.exe test.exe

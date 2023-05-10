@@ -8,3 +8,6 @@ __global__ void reLU(int N, float *A);
 
 __global__ void backprop(int N, float *A);
 
+__global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
+                            float *input, float *hiddenWeights, float *outputWeights, float *result);
+
