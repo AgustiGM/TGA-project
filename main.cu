@@ -104,7 +104,7 @@ int main(int argc, char** argv)
   cudaEventSynchronize(E1);
   
   // Ejecutar el kernel 
-  matMult<<<dimGrid, dimBlock>>>(N, M, P, d_A, d_B, d_C);
+  globalMatMult<<<dimGrid, dimBlock>>>(N, M, P, d_A, d_B, d_C);
 
   cudaEventRecord(E2, 0);
   cudaEventSynchronize(E2);

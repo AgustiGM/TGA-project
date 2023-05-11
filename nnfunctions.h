@@ -1,6 +1,8 @@
 #include <math.h>
 
-__global__ void matMult(int N, int M, int P, float *A, float *B, float *C);
+__device__ void matMult(int N, int M, int P, float *A, float *B, float *C);
+
+__global__ void globalMatMult(int N, int M, int P, float *A, float *B, float *C);
 
 __global__ void sigmoid(int N, float *A);
 

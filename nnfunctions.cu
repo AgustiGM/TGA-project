@@ -4,7 +4,7 @@
 #define SIZE 32
 #endif
 
-__global__ void matMult(int N, int M, int P, float *A, float *B, float *C) {
+__device__ void matMult(int N, int M, int P, float *A, float *B, float *C) {
 
   __shared__ float sA[SIZE][SIZE];
   __shared__ float sB[SIZE][SIZE];
@@ -36,6 +36,10 @@ __global__ void matMult(int N, int M, int P, float *A, float *B, float *C) {
 
 }
 
+__global__ void globalMatMult(int N, int M, int P, float *A, float *B, float *C) {
+    matMult(N,M,P,A,B,C);
+}
+
 
 __global__ void sigmoid(int N, float *A) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -61,9 +65,9 @@ __global__ void backprop(int N, float *A) {
 __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
                             float *input, float *hiddenWeights, float *activationL1, float *outputWeights, float *result) {
 
-  matMult(batchSize, nHiddenLayer, nFeatures, input, hiddenWeights, activationL1);
-  sigmoid(mida, activationL1);
-  matMult(batchSize, nOutput, nHiddenLayer, activationL1, outputWeights, result);
-  sigmoid(mida, result);
+  // matMult(batchSize, nHiddenLayer, nFeatures, input, hiddenWeights, activationL1);
+  // sigmoid(batchSize * nHiddenLayer, activationL1);
+  // matMult(batchSize, nOutput, nHiddenLayer, activationL1, outputWeights, result);
+  // sigmoid(batchSize * nHiddenLayer, result);
 
 }
