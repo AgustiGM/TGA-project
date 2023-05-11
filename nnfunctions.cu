@@ -41,26 +41,26 @@ __global__ void globalMatMult(int N, int M, int P, float *A, float *B, float *C)
 }
 
 
-__device__ void sigmoid(int N, float *A) {
+__device__ void sigmoid(int N, float *input, float *output) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < N) {
-        A[i] = 1 / (1 + exp(-1*A[i]));
+        output[i] = 1 / (1 + exp(-1*input[i]));
     }
 }
 
-__global__ void globalSigmoid(int N, float *A) {
-  sigmoid(N,A);
+__global__ void globalSigmoid(int N, float *input, float *output) {
+  sigmoid(N,input, output);
 }
 
-__device__ void reLU(int N, float *A) {
+__device__ void reLU(int N, float *input, float *output) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < N) {
-        if (A[i] < 0) A[i] = 0;
+        if (input[i] < 0) output[i] = 0;
     }
 }
 
-__global__ void globalReLU(int N, float *A) {
-  reLU(N,A);
+__global__ void globalReLU(int N, float *input, float *output) {
+  reLU(N,input,output);
 }
 
 __global__ void backprop(int N, float *A) {
