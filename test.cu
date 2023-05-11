@@ -59,8 +59,8 @@ int main(int argc, char** argv)
 
   
   // Ejecutar el kernel 
-  sigmoid<<<dimGrid, dimBlock>>>(N, d);
-  reLU<<<dimGrid, dimBlock>>>(N, dr);
+  globalSigmoid<<<dimGrid, dimBlock>>>(N, d);
+  globalReLU<<<dimGrid, dimBlock>>>(N, dr);
 
 
   // Obtener el resultado desde el host 
