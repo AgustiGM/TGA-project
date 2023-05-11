@@ -56,6 +56,7 @@ __device__ void reLU(int N, float *input, float *output) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < N) {
         if (input[i] < 0) output[i] = 0;
+        else output[i] = input[i];
     }
 }
 
