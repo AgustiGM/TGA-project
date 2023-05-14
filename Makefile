@@ -1,42 +1,30 @@
-CUDA_HOME   = /Soft/cuda/11.2.1
+CUDA_HOME   = /usr/local/cuda-12.1
 
 NVCC        = $(CUDA_HOME)/bin/nvcc
 NVCC_FLAGS  = -O3 -Wno-deprecated-gpu-targets -I$(CUDA_HOME)/include -gencode arch=compute_86,code=sm_86 --ptxas-options=-v -I$(CUDA_HOME)/sdk/CUDALibraries/common/inc
 LD_FLAGS    = -lcudart -Xlinker -rpath,$(CUDA_HOME)/lib64 -I$(CUDA_HOME)/sdk/CUDALibraries/common/lib
-PROG_FLAGS  = -DPINNED=1 -DDUMMY=100
 
-EXE00	        = kernel00.exe
-EXE01	        = kernel01.exe
-EXE02	        = kernel02.exe
+PROG_FLAGS  = -DPINNED=1 -DSIZE=32
 
-OBJ00	        = stream00.o
-OBJ01	        = stream01.o
-OBJ02	        = stream02.o
+EXE00	        = main.exe
 
-
+OBJ00	        = main.o
 
 default: $(EXE00)
 
-stream00.o: stream00.cu
-	$(NVCC) -c -o $@ stream00.cu $(NVCC_FLAGS) $(PROG_FLAGS)
-stream01.o: stream01.cu
-	$(NVCC) -c -o $@ stream01.cu $(NVCC_FLAGS) $(PROG_FLAGS)
-stream02.o: stream02.cu
-	$(NVCC) -c -o $@ stream02.cu $(NVCC_FLAGS) $(PROG_FLAGS)
+main.o: main.o
+	$(NVCC) -c -o $@ main.cu $(NVCC_FLAGS) $(PROG_FLAGS)
+
 
 
 $(EXE00): $(OBJ00)
 	$(NVCC) $(OBJ00) -o $(EXE00) $(LD_FLAGS)
 
-$(EXE01): $(OBJ01)
-	$(NVCC) $(OBJ01) -o $(EXE01) $(LD_FLAGS)
-
-$(EXE02): $(OBJ02)
-	$(NVCC) $(OBJ02) -o $(EXE02) $(LD_FLAGS)
 
 
-all:	$(EXE00) $(EXE01) $(EXE02) 
+
+all:	$(EXE00)
 
 clean:
-	rm -rf *.o kernel*.exe
+	rm -rf *.o main.exe
 
