@@ -64,12 +64,61 @@ __global__ void globalReLU(int N, float *input, float *output) {
   reLU(N,input,output);
 }
 
-__global__ void costFunction(int N, float *Z, float *Y){
-    /*
-    Given the output from forward stream, computes the prediction for the input. 
-    */
-    for 
+__global__ void costFunction(int N, int nFeatures, float *Z, float *Y, float *odata){
+  /*
+  Given the output from forward stream, computes the prediction for the input. 
+  */
+
+  //Store the parcial cost for each row:
+  __shared__ double C[N];
+
+  volatile double *sumC = C;
+
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < N){
+    sumC[idx] = (Y[idx] * logf(Z[idx])) + ((1 - Y[idx]) * logf(1 - Z[idx]));
+  }
+  __syncthreads();
+
+  //Sum of the parical cost
+  __shared__ double sdata[N];
+  unsigned int s;
+
+  // Cada thread realiza la suma parcial de los datos que le
+  // corresponden y la deja en la memoria compartida
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x*(blockDim.x*2) + threadIdx.x;
+  unsigned int gridSize = blockDim.x*2*gridDim.x;
+  sdata[tid] = 0;
+  while (i < N) {
+    sdata[tid] += C[i] + C[i+blockDim.x];
+    i += gridSize;
+  }
+  __syncthreads();
+
+  // Hacemos la reduccion en la memoria compartida
+  for (s=blockDim.x/2; s>32; s>>=1) {
+    if (tid < s)
+      sdata[tid] += sdata[tid + s];
+    __syncthreads();
+  }
+  // desenrrollamos el ultimo warp activo
+  if (tid < 32) {
+    volatile double *smem = sdata;
+
+    smem[tid] += smem[tid + 32];
+    smem[tid] += smem[tid + 16];
+    smem[tid] += smem[tid + 8];
+    smem[tid] += smem[tid + 4];
+    smem[tid] += smem[tid + 2];
+    smem[tid] += smem[tid + 1];
+  }
+
+
+  // El thread 0 escribe el resultado de este bloque en la memoria global
+  if (tid == 0) odata[blockIdx.x] = sdata[0]/nFeatures;
 }
+
 
 __global__ int derivative(float Z){
     //if (Z > 0) return 1; 
