@@ -64,25 +64,29 @@ __global__ void globalReLU(int N, float *input, float *output) {
   reLU(N,input,output);
 }
 
-__global__ void costFunction(){
+__global__ void costFunction(int N, float *Z, float *Y){
     /*
     Given the output from forward stream, computes the prediction for the input. 
     */
+    for 
 }
 
-__global__ void derivative(float Z){
-    // if Z > 0 return 1 else return 0
+__global__ int derivative(float Z){
+    //if (Z > 0) return 1; 
+    //else return 0;
 }
 
-__global__ void transposeMatrix(float *odata, const float *idata){
+__global__ void transposeMatrix(float *inMat, float *outMat, int sizex, int sizey){
 
-  int size = gridDim.y;
 
-  int x = blockIdx.x * blockDim.x + threadIdx.x;
-  int y = blockIdx.y * blockDim.x + threadIdx.y;
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-  for (int j = 0; j < blockDim.x; j+= size)
-    odata[x*width + (y+j)] = idata[(y+j)*width + x];
+  if(i < sizex && j < sizey){
+    int idxin = i + sizex * j;
+    int idxout = j + sizey * i;
+    outMat[idxout] = inMat[idxin];
+  }
 }
 __global__ void updateLayers(){
     /*
