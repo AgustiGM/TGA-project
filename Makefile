@@ -7,11 +7,12 @@ LD_FLAGS    = -lcudart -Xlinker -rpath,$(CUDA_HOME)/lib64 -I$(CUDA_HOME)/sdk/CUD
 PROG_FLAGS  = -DPINNED=1 -DSIZE=32
 
 EXE00	        = main.exe
-
 EXE01			= test.exe
+EXE02			= forwardtest.exe
 
 OBJ00	        = main.o nnfunctions.o utils.o
 OBJ01	        = test.o nnfunctions.o utils.o
+OBJ02	        = forwardtest.o nnfunctions.o utils.o
 
 default: $(EXE00)
 
@@ -21,6 +22,9 @@ main.o: main.cu nnfunctions.h utils.h
 
 test.o: test.cu nnfunctions.h utils.h
 	$(NVCC) -c -o $@ test.cu $(NVCC_FLAGS) $(PROG_FLAGS)
+
+forwardtest.o: forwardtest.cu nnfunctions.h utils.h
+	$(NVCC) -c -o $@ forwardtest.cu $(NVCC_FLAGS) $(PROG_FLAGS)
 
 nnfunctions.o: nnfunctions.cu nnfunctions.h
 	$(NVCC) -c -o $@ nnfunctions.cu $(NVCC_FLAGS)
@@ -35,12 +39,17 @@ $(EXE00): $(OBJ00)
 $(EXE01): $(OBJ01)
 	$(NVCC) $(OBJ01) -o $(EXE01) $(LD_FLAGS)
 
+$(EXE02): $(OBJ02)
+	$(NVCC) $(OBJ02) -o $(EXE02) $(LD_FLAGS)
 
 
 
-all:	$(EXE00) $(EXE01)
+
+all:	$(EXE00) $(EXE01) $(EXE02)
 
 test:	$(EXE01)
+
+forwardtest:	$(EXE02)
 
 clean:
 	rm -rf *.o main.exe test.exe

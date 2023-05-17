@@ -1,80 +1,174 @@
 #include "nnfunctions.h"
+#include <stdio.h>
 
 #ifndef SIZE
 #define SIZE 32
 #endif
 
-__device__ void matMult(int N, int M, int P, float *A, float *B, float *C) {
+// struct Layer {
+//     int nInput;
+//     int nOutput;
+//     float *weights;
+//     float *biases;
+//     float *activations;
+// };
+
+// C(N × M) ← A(N × P) · B (P × M)
+__device__ void matMult(int N, int M, int P, float *A, float *B, float *C)
+{
 
   __shared__ float sA[SIZE][SIZE];
   __shared__ float sB[SIZE][SIZE];
 
-  int bx = blockIdx.x;  int by = blockIdx.y;
-  int tx = threadIdx.x; int ty = threadIdx.y;
+  int bx = blockIdx.x;
+  int by = blockIdx.y;
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
   int row = by * SIZE + ty;
   int col = bx * SIZE + tx;
   int k, m;
 
   float tmp = 0.0;
-  for (m=0; m < P-SIZE; m=m+SIZE) {
-    if (row<N) sA[ty][tx] = A[row*P + m + tx];
-    if (col<M) sB[ty][tx] = B[col + (m + ty)*M];
+  for (m = 0; m < P - SIZE; m = m + SIZE)
+  {
+    if (row < N)
+      sA[ty][tx] = A[row * P + m + tx];
+    if (col < M)
+      sB[ty][tx] = B[col + (m + ty) * M];
     __syncthreads();
 
-    for (k=0; k<SIZE; k++)
+    for (k = 0; k < SIZE; k++)
       tmp += sA[ty][k] * sB[k][tx];
 
     __syncthreads();
   }
-  if (row<N) sA[ty][tx] = A[row*P + m + tx];
-  if (col<M) sB[ty][tx] = B[col + (m + ty)*M];
+  if (row < N)
+    sA[ty][tx] = A[row * P + m + tx];
+  if (col < M)
+    sB[ty][tx] = B[col + (m + ty) * M];
   __syncthreads();
-  for (k=0; m<P; k++, m++)
+  for (k = 0; m < P; k++, m++)
     tmp += sA[ty][k] * sB[k][tx];
 
-  if (row<N && col<M) C[row*M+col] = tmp;
-
+  if (row < N && col < M)
+    C[row * M + col] = tmp;
 }
 
-__global__ void globalMatMult(int N, int M, int P, float *A, float *B, float *C) {
-    matMult(N,M,P,A,B,C);
+__global__ void globalMatMult(int N, int M, int P, float *A, float *B, float *C)
+{
+  matMult(N, M, P, A, B, C);
 }
 
-
-__device__ void sigmoid(int N, float *input, float *output) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < N) {
-        output[i] = 1 / (1 + exp(-1*input[i]));
-    }
+__device__ void sigmoid(int N, float *input, float *output)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < N)
+  {
+    output[i] = 1 / (1 + exp(-1 * input[i]));
+  }
 }
 
-__global__ void globalSigmoid(int N, float *input, float *output) {
-  sigmoid(N,input, output);
+__global__ void globalSigmoid(int N, float *input, float *output)
+{
+  sigmoid(N, input, output);
 }
 
-__device__ void reLU(int N, float *input, float *output) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < N) {
-        if (input[i] < 0) output[i] = 0;
-        else output[i] = input[i];
-    }
+__device__ void reLU(int N, float *input, float *output)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < N)
+  {
+    if (input[i] < 0)
+      output[i] = 0;
+    else
+      output[i] = input[i];
+  }
 }
 
-__global__ void globalReLU(int N, float *input, float *output) {
-  reLU(N,input,output);
+__global__ void globalReLU(int N, float *input, float *output)
+{
+  reLU(N, input, output);
 }
 
-__global__ void backprop(int N, float *A) {
-  
+__global__ void backprop(int N, float *A)
+{
+}
 
+__device__ float localSigmoid(float x)
+{
+  return 1 / (1 + exp(-x));
 }
 
 __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
-                            float *input, float *hiddenWeights, float *activationL1, float *outputWeights, float *result) {
+                            float *input, float *weights, float *weightsOutput, float *activationL1, float *result)
+{
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-  // matMult(batchSize, nHiddenLayer, nFeatures, input, hiddenWeights, activationL1);
-  // sigmoid(batchSize * nHiddenLayer, activationL1);
-  // matMult(batchSize, nOutput, nHiddenLayer, activationL1, outputWeights, result);
-  // sigmoid(batchSize * nHiddenLayer, result);
+  if (tid < batchSize)
+  {
+    // Compute the activations of the hidden layer (Layer 1)
+    for (int i = 0; i < nHiddenLayer; i++)
+    {
+      float hiddenSum = 0.0f;
 
+      // Perform matrix multiplication between transposed input and weights
+      for (int j = 0; j < nFeatures; j++)
+      {
+        hiddenSum += input[j * batchSize + tid] * weights[i * nFeatures + j];
+      }
+
+      // Store the activation of the hidden layer
+      activationL1[tid * nHiddenLayer + i] = localSigmoid(hiddenSum);
+    }
+
+    // Compute the output layer activations
+    for (int c = 0; c < nOutput; c++)
+    {
+      float sum = 0.0f;
+
+      for (int i = 0; i < nHiddenLayer; i++)
+      {
+        sum += activationL1[tid * nHiddenLayer + i] * weightsOutput[i * nOutput + c];
+      }
+
+      // Apply activation function (e.g., sigmoid, ReLU, etc.) to the sum
+      result[tid * nOutput + c] = exp(sum);
+    }
+    // Normalize the result to obtain probabilities using softmax
+    float totalSum = 0.0f;
+    for (int c = 0; c < nOutput; c++)
+    {
+      totalSum += result[tid * nOutput + c];
+    }
+
+    for (int c = 0; c < nOutput; c++)
+    { 
+      result[tid * nOutput + c] /= totalSum;
+    }
+  }
+}
+
+__device__ void transpose(int N, int M, float *input, float *output)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < N * M)
+  {
+    int row = i / M;
+    int col = i % M;
+    output[col * N + row] = input[i];
+  }
+}
+
+__device__ void softmax(int N, float *input, float *output)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < N)
+  {
+    float sum = 0;
+    for (int j = 0; j < N; j++)
+    {
+      sum += exp(input[j]);
+    }
+    output[i] = exp(input[i]) / sum;
+  }
 }
