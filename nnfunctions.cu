@@ -73,6 +73,17 @@ __global__ void costFunction(){
 __global__ void derivative(float Z){
     // if Z > 0 return 1 else return 0
 }
+
+__global__ void transposeMatrix(float *odata, const float *idata){
+
+  int size = gridDim.y;
+
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.x + threadIdx.y;
+
+  for (int j = 0; j < blockDim.x; j+= size)
+    odata[x*width + (y+j)] = idata[(y+j)*width + x];
+}
 __global__ void updateLayers(){
     /*
     Updates weight, biases suing gradient descendent method using backprop

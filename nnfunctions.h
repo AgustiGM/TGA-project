@@ -29,4 +29,6 @@ __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int 
 
 __device__ void softmax(int N, float *input, float *output);
 
+__global__ void transposeMatrix(float *odata, const float *idata);
+
 
