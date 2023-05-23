@@ -125,7 +125,7 @@ __global__ int derivative(float Z){
     //else return 0;
 }
 
-__global__ void transposeMatrix(float *inMat, float *outMat, int sizex, int sizey){
+__device__ void transposeMatrix(float *inMat, float *outMat, int sizex, int sizey){
 
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -152,7 +152,9 @@ __global__ void updateLayers(){
     //W_i = W_i - aplha * dW_i
     //b_i = b_i - alpha * db1
 }
-__global__ void backprop(int N, int m, float *A, float *Z, float *W, float *Y, float *dZ, float *dW, float *dB) {
+__global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
+                        float *hiddenWeights, float *outputWeights, float *activationL1, float *activationL2, float *Y,
+                        float *dZ, float *dW, float *db) {
     /*
     Given:
       - number of input data m
@@ -167,13 +169,30 @@ __global__ void backprop(int N, int m, float *A, float *Z, float *W, float *Y, f
     */
 
     // the following lanes must be done trhough every layer
-    //dZ[last_column] = A[last_column] - Y
-    //dW[last_column] = 1 / m * dZ[last_column] *(dot product) transpose(A[last_column - 1])
-    //db[last_column] = 1 / m * sum(dZ[last_column])
+    //dZ[last_column] 2 = A[last_column] - Y
+    //dW[last_column] 2= 1 / m * dZ[last_column] *(dot product) transpose(A[last_column - 1])
+    //db[last_column] 2= 1 / m * sum(dZ[last_column])
     
-    //dZ[last_column - 1] = trasnpose(W[last_column]) *(dot product) dZ[last_column] * derivative(Z[last_column-1])
-    //dW[last_column - 1] = 1 / m * dZ1 *(dot prod) transpose(X)
-    //db[last_column - 1] = 1 / m * sum(dZ[last_column - 1])
+    //dZ[last_column - 1] 1= trasnpose(W[last_column]) *(dot product) dZ[last_column] * derivative(Z[last_column-1])
+    //dW[last_column - 1] 1= 1 / m * dZ1 *(dot prod) transpose(X)
+    //db[last_column - 1] 1= 1 / m * sum(dZ[last_column - 1])
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if(tid < batchSize){
+      // Compute the derivatives of the last layer
+      /*for(int i = nHiddenLayer - 1; i >= 0 ; ++i){
+        dZ[tid + nOutput*i] = activationL2[tid + nOutput*i] - Y[tid + nOutput*i];
+      }*/
+      int layer2 = nHiddenLayer - 1;
+      //Derivative Z output layer
+      dZ[tid + nOutput*layer2] = activationL2[tid + nOutput*layer2] - Y[tid + nOutput*layer2];
+
+      //Derivative W
+      
+      for(int j = 0; j < nOutput; ++j){
+        dW[tid + nFeatures*nOutput + j] = 1/batchSize * dZ[tid + nOutput*layer2] 
+      }
+      
+    }
 }
 
 __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
