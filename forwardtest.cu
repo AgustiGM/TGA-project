@@ -13,7 +13,10 @@ int main()
 {
     // define pointers to data
     float *d_input, *d_weights, *d_weightsOutput, *d_activation, *d_result, *d_temp;
+    float *d_Z1, *d_Z2;
+    float *h_Z1, *h_Z2;
     float *h_input, *h_weights, *h_weightsOutput, *h_activation, *h_result;
+    
     cudaEvent_t E0, E1, E2, E3;
 
     float *h_labels, *h_loss;
@@ -35,6 +38,8 @@ int main()
     h_result = (float *)malloc(sizeof(float) * nOutput * batchSize);
     h_labels = (float *)malloc(sizeof(float) * nOutput * batchSize);
     h_loss = (float *)malloc(sizeof(float) * batchSize);
+    h_Z1 = (float *)malloc(sizeof(float) * nHiddenLayer * batchSize);
+    h_Z2 = (float *)malloc(sizeof(float) * nOutput * batchSize);
 
     // Allocate device memory for the input, layers, and result arrays
     cudaMalloc((void **)&d_input, sizeof(float) * nFeatures * batchSize);
@@ -45,6 +50,8 @@ int main()
     cudaMalloc((void **)&d_temp, sizeof(float) * nFeatures * batchSize);
     cudaMalloc((void **)&d_labels, sizeof(float) * nOutput * batchSize);
     cudaMalloc((void **)&d_loss, sizeof(float) * batchSize);
+    cudaMalloc((void **)&d_Z1, sizeof(float) * nHiddenLayer * batchSize);
+    cudaMalloc((void **)&d_Z2, sizeof(float) * nOutput * batchSize);
 
     // Initialize the neural network weights with random values
     for (int i = 0; i < nFeatures * nHiddenLayer; i++)
@@ -102,7 +109,7 @@ int main()
     cudaEventSynchronize(E0);
     size_t sze = nHiddenLayer*sizeof(float);
     // forwardPass<<<batchSize, 512>>>(nFeatures, batchSize, nHiddenLayer, nOutput, d_input, d_weights, d_weightsOutput, d_activation, d_result);
-    optimizedForwardPass<<<batchSize, 1024, sze>>>(nFeatures, batchSize, nHiddenLayer, nOutput, d_input, d_weights, d_weightsOutput, d_activation, d_result);
+    optimizedForwardPass<<<batchSize, 1024, sze>>>(nFeatures, batchSize, nHiddenLayer, nOutput, d_input, d_weights, d_Z1, d_activation, d_weightsOutput, d_Z2, d_result);
     cudaError_t error = cudaGetLastError();
     
     if (error != cudaSuccess) {
@@ -215,6 +222,10 @@ int main()
     cudaFree(d_activation);
     cudaFree(d_result);
     cudaFree(d_temp);
+    cudaFree(d_labels);
+    cudaFree(d_loss);
+    cudaFree(d_Z1);
+    cudaFree(d_Z2);
 
     // Free the host memory
     free(h_input);
@@ -223,6 +234,10 @@ int main()
     free(h_activation);
     free(h_result);
     free(h_temp);
+    free(h_labels);
+    free(h_loss);
+    free(h_Z1);
+    free(h_Z2);
 }
 
 void seqForwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput, float *input, float *weights, float *weightsOutput, float *activationL1, float *result)

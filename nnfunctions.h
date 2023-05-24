@@ -37,6 +37,8 @@ __global__ void transpose(int N, int M, float *input, float *output);
 __global__ void globalSoftmax(int nOutput, int batchSize, float *input);
 
 __global__ void optimizedForwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
-                            float *input, float *weights, float *weightsOutput, float *activationL1, float *result);
+                                     float *input,
+                                     float *weights, float * Z1, float *activationL1,
+                                     float * weightsOutput, float *Z2, float *result);
 
 __global__ void categoricalCrossEntropy(int nOutput, int batchSize, float *groundTruth, float* predictions, float *loss);
