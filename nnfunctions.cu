@@ -198,44 +198,61 @@ __global__ void optimizedForwardPass(int nFeatures, int batchSize, int nHiddenLa
 {
   int bx = blockIdx.x;
   int tid = threadIdx.x;
+
+  extern __shared__ float activationL1_s[];
   
-  
-  // if (tid == 0) printf("blockfim: %d\n", blockDim.x);
-  if (bx < batchSize)
-  {
     for (int i = tid; i < nHiddenLayer; i += blockDim.x)
     {
-      
       float hiddenSum = 0.0f;
       for (int j = 0; j < nFeatures; j++)
       { 
         hiddenSum += input[j * batchSize + bx] * weights[i * nFeatures + j];
       }
     
-      activationL1[bx * nHiddenLayer + i] = localSigmoid(hiddenSum);
+      activationL1_s[i] = localSigmoid(hiddenSum);
     }
     __syncthreads();
+    
     for (int c = tid; c < nOutput; c += blockDim.x)
     {
       float sum = 0.0f;
 
       for (int i = 0; i < nHiddenLayer; i++)
       {
-        sum += activationL1[bx * nHiddenLayer + i] * weightsOutput[i * nOutput + c];
+        sum += activationL1_s[i] * weightsOutput[i * nOutput + c];
       }
       result[bx * nOutput + c] = exp(sum);
     }
-    __syncthreads();
+    // __syncthreads();
     float totalSum = 0.0f;
     for (int c = 0; c < nOutput; ++c)
     {
       totalSum += result[bx * nOutput + c];
     }
     
-    __syncthreads();
+    // __syncthreads();
     for (int c = tid; c < nOutput; c += blockDim.x)
     {
       result[bx * nOutput + c] /= totalSum;
     }
+    for (int i = tid; i < nHiddenLayer; i += blockDim.x)
+    {
+      activationL1[bx * nHiddenLayer + i] = activationL1_s[i];
+    }
+
+}
+
+__global__ void categoricalCrossEntropy(int nOutput, int batchSize, float *groundTruth, float* predictions, float *loss) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  
+  if (tid < batchSize) {
+    float example_loss = 0.0f;
+
+        for (int c = 0; c < nOutput; c++) {
+            example_loss -= groundTruth[tid * nOutput + c] * log(predictions[tid * nOutput + c]);
+            
+        }
+
+        loss[tid] = example_loss;
   }
 }
