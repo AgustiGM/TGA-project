@@ -7,16 +7,21 @@
 // Define the necessary CUDA headers and functions here
 void seqForwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput, float* input, float* weights, float* weightsOutput, float* activationL1, float* result);
 
+float computeBatchCategoricalCrossEntropy(int nOutput, int batchSize, float* target, float* predicted);
+
 int main()
 {
     // define pointers to data
     float *d_input, *d_weights, *d_weightsOutput, *d_activation, *d_result, *d_temp;
     float *h_input, *h_weights, *h_weightsOutput, *h_activation, *h_result;
 
+    float *h_labels;
+    float *d_labels;
+    // srand(87);
     int nFeatures = 728;
-    int batchSize = 32;
-    int nOutput = 2;
-    int nHiddenLayer = 1600;
+    int batchSize = 64;
+    int nOutput = 189;
+    int nHiddenLayer = 5972;
 
     // Allocate host memory for the input, layers, and result arrays
     h_input = (float *)malloc(sizeof(float) * nFeatures * batchSize);
@@ -24,6 +29,7 @@ int main()
     h_weightsOutput = (float *)malloc(sizeof(float) * nHiddenLayer * nOutput);
     h_activation = (float *)malloc(sizeof(float) * nHiddenLayer * batchSize);
     h_result = (float *)malloc(sizeof(float) * nOutput * batchSize);
+    h_labels = (float *)malloc(sizeof(float) * nOutput * batchSize);
     
 
     // Allocate device memory for the input, layers, and result arrays
@@ -33,6 +39,7 @@ int main()
     cudaMalloc((void **)&d_activation, sizeof(float) * nHiddenLayer * batchSize);
     cudaMalloc((void **)&d_result, sizeof(float) * nOutput * batchSize);
     cudaMalloc((void **)&d_temp, sizeof(float) * nFeatures * batchSize);
+    cudaMalloc((void **)&d_labels, sizeof(float) * nOutput * batchSize);
 
     // Initialize the neural network weights with random values
     for (int i = 0; i < nFeatures * nHiddenLayer; i++)
@@ -50,10 +57,24 @@ int main()
         h_input[i] = -1.0f + 2.0f * rand() / (float)RAND_MAX;
     }
 
+    for (int i = 0; i < nOutput * batchSize; i++)
+    {   
+        if (i % nOutput == 0)
+        {
+            h_labels[i] = 1.0f;
+        }
+        else
+        {
+            h_labels[i] = 0.0f;
+        }
+        
+    }
+
     // Copy the input and layer data to the device
     cudaMemcpy(d_input, h_input, sizeof(float) * nFeatures * batchSize, cudaMemcpyHostToDevice);
     cudaMemcpy(d_weights, h_weights, sizeof(float) * nFeatures * nHiddenLayer, cudaMemcpyHostToDevice);
     cudaMemcpy(d_weightsOutput, h_weightsOutput, sizeof(float) * nHiddenLayer * nOutput, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_labels, h_labels, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
 
     // Define the grid and block sizes for the CUDA kernel launch
     dim3 grid(32, 32, 1);
@@ -100,22 +121,30 @@ int main()
     
     seqForwardPass(nFeatures, batchSize, nHiddenLayer, nOutput, h_input, h_weights, h_weightsOutput, h_activation, h_temp);
 
-    
+    int count = 0;
 
     for (int i = 0; i < batchSize; i++)
     {
         float sum1 = 0;
         float sum2 = 0;
+        
         for (int j = 0; j < nOutput; j++)
-        {
+        {   
+            if (abs(h_result[i * nOutput + j] - h_temp[i * nOutput + j]) > 0.0001) {
+                printf("batch %d, output %d: %f, %f\n", i, j, h_result[i * nOutput + j], h_temp[i * nOutput + j]);
+                ++count;
+            }
             
-            printf("batch %d, output %d: %f, %f\n", i, j, h_result[i * nOutput + j], h_temp[i * nOutput + j]);
+
             sum1 += h_result[i * nOutput + j];
             sum2 += h_temp[i * nOutput + j];   
         }
-        printf("total: %f, %f\n", sum1, sum2);
+
         
     }
+    printf("count: %d\n", count);
+    float ls = computeBatchCategoricalCrossEntropy(nOutput, batchSize, h_labels, h_temp);
+    printf("loss: %f\n", ls);
 
 
 
@@ -174,4 +203,23 @@ void seqForwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
             result[tid * nOutput + c] /= totalSum;
         }
     }
+}
+
+float computeBatchCategoricalCrossEntropy(int nOutput, int batchSize, float* target, float* predicted) {
+    float totalLoss = 0.0f;
+    
+
+    for (int i = 0; i < batchSize; i++) {
+        float loss = 0.0f;
+
+        for (int c = 0; c < nOutput; c++) {
+            // printf("target: %f, predicted: %f\n", target[i * nOutput + c], predicted[i * nOutput + c]);
+            loss -= target[i * nOutput + c] * log(predicted[i * nOutput + c]);
+            
+        }
+
+        totalLoss += loss;
+    }
+
+    return totalLoss / batchSize;
 }

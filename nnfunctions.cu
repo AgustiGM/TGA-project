@@ -198,7 +198,9 @@ __global__ void optimizedForwardPass(int nFeatures, int batchSize, int nHiddenLa
 {
   int bx = blockIdx.x;
   int tid = threadIdx.x;
-
+  
+  
+  // if (tid == 0) printf("blockfim: %d\n", blockDim.x);
   if (bx < batchSize)
   {
     for (int i = tid; i < nHiddenLayer; i += blockDim.x)
@@ -212,6 +214,7 @@ __global__ void optimizedForwardPass(int nFeatures, int batchSize, int nHiddenLa
     
       activationL1[bx * nHiddenLayer + i] = localSigmoid(hiddenSum);
     }
+    __syncthreads();
     for (int c = tid; c < nOutput; c += blockDim.x)
     {
       float sum = 0.0f;
@@ -222,13 +225,15 @@ __global__ void optimizedForwardPass(int nFeatures, int batchSize, int nHiddenLa
       }
       result[bx * nOutput + c] = exp(sum);
     }
+    __syncthreads();
     float totalSum = 0.0f;
-    for (int c = 0; c < nOutput; c++)
+    for (int c = 0; c < nOutput; ++c)
     {
       totalSum += result[bx * nOutput + c];
     }
-
-    for (int c = 0; c < nOutput; c++)
+    
+    __syncthreads();
+    for (int c = tid; c < nOutput; c += blockDim.x)
     {
       result[bx * nOutput + c] /= totalSum;
     }
