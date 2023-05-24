@@ -14,9 +14,9 @@
 // };
 
 // C(N × M) ← A(N × P) · B (P × M)
-__device__ void matMult(int N, int M, int P, float *A, float *B, float *C)
+__global__ void matMult(int N, int M, int P, float *A, float *B, float *C)
 {
-
+    
   __shared__ float sA[SIZE][SIZE];
   __shared__ float sB[SIZE][SIZE];
 
@@ -39,7 +39,7 @@ __device__ void matMult(int N, int M, int P, float *A, float *B, float *C)
 
     for (k = 0; k < SIZE; k++)
       tmp += sA[ty][k] * sB[k][tx];
-
+   
     __syncthreads();
   }
   if (row < N)
@@ -52,36 +52,38 @@ __device__ void matMult(int N, int M, int P, float *A, float *B, float *C)
 
   if (row < N && col < M)
     C[row * M + col] = tmp;
+
+   
+ 
 }
 
-__global__ void globalMatMult(int N, int M, int P, float *A, float *B, float *C)
-{
-  matMult(N, M, P, A, B, C);
-}
 
-__device__ void sigmoid(int N, float *input, float *output)
+__global__ void sigmoid(int N, float *input, float *output)
 {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N)
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+  for (int i = tid; i < N; i += blockDim.x * gridDim.x)
   {
     output[i] = 1 / (1 + exp(-1 * input[i]));
+
   }
+  
 }
 
-__global__ void globalSigmoid(int N, float *input, float *output)
-{
-  sigmoid(N, input, output);
-}
 
 __device__ void reLU(int N, float *input, float *output)
 {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N)
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = tid; i < N; i += blockDim.x * gridDim.x)
   {
-    if (input[i] < 0)
-      output[i] = 0;
-    else
+    if (input[i] > 0)
+    {
       output[i] = input[i];
+    }
+    else
+    {
+      output[i] = 0;
+    }
   }
 }
 
@@ -106,6 +108,7 @@ __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int 
 
   if (tid < batchSize)
   {
+    
     // Compute the activations of the hidden layer (Layer 1)
     for (int i = 0; i < nHiddenLayer; i++)
     {
@@ -142,33 +145,92 @@ __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int 
     }
 
     for (int c = 0; c < nOutput; c++)
-    { 
+    {
       result[tid * nOutput + c] /= totalSum;
     }
   }
 }
 
-__device__ void transpose(int N, int M, float *input, float *output)
+
+
+__global__ void transpose(int N, int M, float *input, float *output)
 {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N * M)
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = tid; i < N * M; i += blockDim.x * gridDim.x)
   {
     int row = i / M;
     int col = i % M;
+    
     output[col * N + row] = input[i];
   }
 }
 
-__device__ void softmax(int N, float *input, float *output)
-{
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N)
-  {
-    float sum = 0;
-    for (int j = 0; j < N; j++)
-    {
-      sum += exp(input[j]);
+__device__ void softmax(int nOutput, int batchSize, float *input) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (tid < batchSize) {
+        float maxVal = input[tid * nOutput];  
+        for (int i = 1; i < nOutput; i++) {
+            maxVal = max(maxVal, input[tid * nOutput + i]);
+        }
+
+        float sum = 0.0f;
+        for (int i = 0; i < nOutput; i++) {
+            input[tid * nOutput + i] = exp(input[tid * nOutput + i] - maxVal);
+            sum += input[tid * nOutput + i];
+        }
+
+        for (int i = 0; i < nOutput; i++) {
+            input[tid * nOutput + i] /= sum;
+        }
     }
-    output[i] = exp(input[i]) / sum;
+}
+
+__global__ void globalSoftmax(int nOutput, int batchSize, float *input)
+{
+  softmax(nOutput, batchSize, input);
+}
+
+
+
+__global__ void optimizedForwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
+                            float *input, float *weights, float *weightsOutput, float *activationL1, float *result)
+{
+  int bx = blockIdx.x;
+  int tid = threadIdx.x;
+
+  if (bx < batchSize)
+  {
+    for (int i = tid; i < nHiddenLayer; i += blockDim.x)
+    {
+      
+      float hiddenSum = 0.0f;
+      for (int j = 0; j < nFeatures; j++)
+      { 
+        hiddenSum += input[j * batchSize + bx] * weights[i * nFeatures + j];
+      }
+    
+      activationL1[bx * nHiddenLayer + i] = localSigmoid(hiddenSum);
+    }
+    for (int c = tid; c < nOutput; c += blockDim.x)
+    {
+      float sum = 0.0f;
+
+      for (int i = 0; i < nHiddenLayer; i++)
+      {
+        sum += activationL1[bx * nHiddenLayer + i] * weightsOutput[i * nOutput + c];
+      }
+      result[bx * nOutput + c] = exp(sum);
+    }
+    float totalSum = 0.0f;
+    for (int c = 0; c < nOutput; c++)
+    {
+      totalSum += result[bx * nOutput + c];
+    }
+
+    for (int c = 0; c < nOutput; c++)
+    {
+      result[bx * nOutput + c] /= totalSum;
+    }
   }
 }
