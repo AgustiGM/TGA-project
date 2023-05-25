@@ -14,7 +14,7 @@
 // };
 
 // C(N × M) ← A(N × P) · B (P × M)
-__global__ void matMult(int N, int M, int P, float *A, float *B, float *C)
+/**__global__ void matMult(int N, int M, int P, float *A, float *B, float *C)
 {
 
   __shared__ float sA[SIZE][SIZE];
@@ -52,7 +52,7 @@ __global__ void matMult(int N, int M, int P, float *A, float *B, float *C)
 
   if (row < N && col < M)
     C[row * M + col] = tmp;
-}
+}**/
 
 __global__ void sigmoid(int N, float *input, float *output)
 {
@@ -60,7 +60,7 @@ __global__ void sigmoid(int N, float *input, float *output)
 
   for (int i = tid; i < N; i += blockDim.x * gridDim.x)
   {
-    output[i] = 1 / (1 + exp(-1 * input[i]));
+    output[i] = 1.0f / (1.0f + exp(-1.0f * input[i]));
   }
 }
 
@@ -144,18 +144,6 @@ __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int 
   }
 }
 
-__global__ void transpose(int N, int M, float *input, float *output)
-{
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  for (int i = tid; i < N * M; i += blockDim.x * gridDim.x)
-  {
-    int row = i / M;
-    int col = i % M;
-
-    output[col * N + row] = input[i];
-  }
-}
-
 __device__ void softmax(int nOutput, int batchSize, float *input)
 {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -205,7 +193,7 @@ __global__ void optimizedForwardPass(int nFeatures, int batchSize, int nHiddenLa
       hiddenSum += input[j * batchSize + bx] * weights[i * nFeatures + j];
     }
     Z1[bx * nHiddenLayer + i] = hiddenSum;
-    activationL1_s[i] = localSigmoid(hiddenSum);
+    activationL1_s[i] = localReLU(hiddenSum);
   }
   __syncthreads();
 
@@ -253,4 +241,59 @@ __global__ void categoricalCrossEntropy(int nOutput, int batchSize, float *groun
 
     loss[tid] = example_loss;
   }
+}
+
+__global__ void backpropagation(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
+                                     float *Z1, float *activationL1,
+                                     float *Z2, float *result, float * weightsOutput,
+                                     float *input, float *labels,
+                                     float* dZ2, float* dW2, float* dZ1, float* dW1) {
+  int bx = blockIdx.x;
+  int tid = threadIdx.x;
+  for (int i = tid; i < nOutput; i += blockDim.x)
+  {
+    dZ2[bx * nOutput + i] = result[bx * nOutput + i] - labels[bx * nOutput + i];
+  }
+  // dW2 = 1/m + dZ2 * activationL1.transpose()
+  for (int i = tid; i < nHiddenLayer; i += blockDim.x)
+  {
+    float sum = 0.0f;
+    for (int c = 0; c < nOutput; c++)
+    {
+      sum += dZ2[bx * nOutput + c] * activationL1[c*nHiddenLayer + i];
+    }
+    dW2[bx * nHiddenLayer + i] = sum / batchSize;
+  }
+
+  // dZ1 = weightsOutput.transpose() * dZ2 * localReLU'(Z1)
+  for (int i = tid; i < nHiddenLayer; i += blockDim.x)
+  {
+    float sum = 0.0f;
+    for (int c = 0; c < nOutput; c++)
+    {
+      sum += weightsOutput[c * nOutput + i] * dZ2[bx * nOutput + c];
+    }
+    dZ1[bx * nHiddenLayer + i] = sum * localReLUPrime(Z1[bx * nHiddenLayer + i]);
+  }
+
+  //dW1 = 1/m * dZ1 * input.transpose()
+  for (int i = tid; i < nFeatures; i += blockDim.x)
+  {
+    float sum = 0.0f;
+    for (int c = 0; c < nHiddenLayer; c++)
+    {
+      sum += dZ1[bx * nHiddenLayer + c] * input[c * nFeatures + i];
+    }
+    dW1[bx * nFeatures + i] = sum / nOutput;
+  }
+}
+
+__device__ float localReLU(float x)
+{
+  return max(0.0f, x);
+}
+
+__device__ float localReLUPrime(float x)
+{
+  return x > 0.0f ? 1.0f : 0.0f;
 }
