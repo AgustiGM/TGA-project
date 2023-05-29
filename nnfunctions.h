@@ -34,12 +34,7 @@ __device__ float localReLU(float x);
 
 __device__ float localReLUPrime(float x);
 
-<<<<<<< HEAD
-__global__ void transposeMatrix(float *odata, const float *idata);
-
-=======
 __device__ void softmax(int nOutput, int batchSize, float *input);
->>>>>>> simple-nn
 
 __global__ void globalSoftmax(int nOutput, int batchSize, float *input);
 
