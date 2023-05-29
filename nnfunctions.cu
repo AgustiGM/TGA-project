@@ -65,39 +65,18 @@ __global__ void globalReLU(int N, float *input, float *output) {
 }
 
 __global__ void costFunction(int N, int nFeatures, float *Z, float *Y, float *odata){
-  /*
-  Given the output from forward stream, computes the prediction for the input. 
-  */
 
-  //Store the parcial cost for each row:
-  __shared__ double C[N];
-
-  volatile double *sumC = C;
-
+  __shared__ float tmpd[N];
+  int tid = threadIdx.x;
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < N){
-    sumC[idx] = (Y[idx] * logf(Z[idx])) + ((1 - Y[idx]) * logf(1 - Z[idx]));
-  }
-  __syncthreads();
 
-  //Sum of the parical cost
-  __shared__ double sdata[N];
-  unsigned int s;
+  tmpd[tid] = (Y[idx] * logf(Z[idx])) + ((1 - Y[idx]) * logf(1 - Z[idx]));
 
-  // Cada thread realiza la suma parcial de los datos que le
-  // corresponden y la deja en la memoria compartida
-  unsigned int tid = threadIdx.x;
-  unsigned int i = blockIdx.x*(blockDim.x*2) + threadIdx.x;
-  unsigned int gridSize = blockDim.x*2*gridDim.x;
-  sdata[tid] = 0;
-  while (i < N) {
-    sdata[tid] += C[i] + C[i+blockDim.x];
-    i += gridSize;
-  }
+  // Synchronize threads within the block
   __syncthreads();
 
   // Hacemos la reduccion en la memoria compartida
-  for (s=blockDim.x/2; s>32; s>>=1) {
+  for (int s=blockDim.x/2; s>32; s>>=1) {
     if (tid < s)
       sdata[tid] += sdata[tid + s];
     __syncthreads();
@@ -119,22 +98,50 @@ __global__ void costFunction(int N, int nFeatures, float *Z, float *Y, float *od
   if (tid == 0) odata[blockIdx.x] = sdata[0]/nFeatures;
 }
 
+__global__ void dotProd(int N, float *vec1, float *vec2, float *res){
+  __shared__ float tmpd[N];
+  int tid = threadIdx.x;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
+  // Perform the dot product calculation
+  tmpd[tid] = vec1[idx] * vec2[idx];
+
+  // Synchronize threads within the block
+  __syncthreads();
+
+  // Perform parallel reduction
+  for (int s=blockDim.x/2; s>32; s>>=1) {
+    if (tid < s)
+      tmpd[tid] += tmpd[tid + s];
+    __syncthreads();
+  }
+  // desenrrollamos el ultimo warp activo
+  if (tid < 32) {
+    volatile double *smem = tmpd;
+
+    smem[tid] += smem[tid + 32];
+    smem[tid] += smem[tid + 16];
+    smem[tid] += smem[tid + 8];
+    smem[tid] += smem[tid + 4];
+    smem[tid] += smem[tid + 2];
+    smem[tid] += smem[tid + 1];
+  }
+  // El thread 0 escribe el resultado de este bloque en la memoria global
+  if (tid == 0) res[blkId] = tmpd[0];
+}
 __global__ int derivative(float Z){
     //if (Z > 0) return 1; 
     //else return 0;
 }
 
-__device__ void transposeMatrix(float *inMat, float *outMat, int sizex, int sizey){
+__device__ void transposeMatrix(float *A, float *B, int row, int col){
 
 
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  int j = blockIdx.y * blockDim.y + threadIdx.y;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int idy = blockIdx.y * blockDim.y + threadIdx.y;
 
-  if(i < sizex && j < sizey){
-    int idxin = i + sizex * j;
-    int idxout = j + sizey * i;
-    outMat[idxout] = inMat[idxin];
+  if(idx < col && idy < row){
+    B[idy + row*idx] = A[idx + col*idy];
   }
 }
 __global__ void updateLayers(){
@@ -152,9 +159,9 @@ __global__ void updateLayers(){
     //W_i = W_i - aplha * dW_i
     //b_i = b_i - alpha * db1
 }
-__global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
-                        float *hiddenWeights, float *outputWeights, float *activationL1, float *activationL2, float *Y,
-                        float *dZ, float *dW, float *db) {
+__global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOutput, int nLayers,
+                        float *hiddenWeights, float *outputWeights, float *actL1, float *actL2, float *Y,
+                        float *dZ1, float dZ2, float dW1, float *dW2, float *db1, float *db2) {
     /*
     Given:
       - number of input data m
@@ -170,27 +177,31 @@ __global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOu
 
     // the following lanes must be done trhough every layer
     //dZ[last_column] 2 = A[last_column] - Y
-    //dW[last_column] 2= 1 / m * dZ[last_column] *(dot product) transpose(A[last_column - 1])
+    //dW[last_column] 2= 1 / m * dZ[last_column] * transpose(A[last_column - 1])
     //db[last_column] 2= 1 / m * sum(dZ[last_column])
     
     //dZ[last_column - 1] 1= trasnpose(W[last_column]) *(dot product) dZ[last_column] * derivative(Z[last_column-1])
     //dW[last_column - 1] 1= 1 / m * dZ1 *(dot prod) transpose(X)
     //db[last_column - 1] 1= 1 / m * sum(dZ[last_column - 1])
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if(tid < batchSize){
-      // Compute the derivatives of the last layer
-      /*for(int i = nHiddenLayer - 1; i >= 0 ; ++i){
-        dZ[tid + nOutput*i] = activationL2[tid + nOutput*i] - Y[tid + nOutput*i];
-      }*/
-      int layer2 = nHiddenLayer - 1;
-      //Derivative Z output layer
-      dZ[tid + nOutput*layer2] = activationL2[tid + nOutput*layer2] - Y[tid + nOutput*layer2];
 
-      //Derivative W
+    __shared__ float tmpdZ2[nOutput]
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx < batchSize){
       
-      for(int j = 0; j < nOutput; ++j){
-        dW[tid + nFeatures*nOutput + j] = 1/batchSize * dZ[tid + nOutput*layer2] 
+      int l2 = nLayers - 1;
+      //Derivative Z output layer Out[2]
+      for(int i = 0; i < nOutput; ++i){
+        dZ2[idx*nOutput + i] = actL2[idx*nOutput + i] - Y[idx*nOutput + i];
       }
+      //Derivative W
+      for(int i = 0; i < nOutput; ++i){
+        //dW[idx*nOutput + i] = 1/nFeatures * dZ[idx + nOutput*layer2]
+        transpose(actL1, res);
+        matMult(N, M, P, dZ, res, c);
+        dW[idx*nOutput + i] = c;
+      }
+      //Derivative b
       
     }
 }
