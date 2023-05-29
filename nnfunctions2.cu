@@ -129,10 +129,6 @@ __global__ void dotProd(int N, float *vec1, float *vec2, float *res){
   // El thread 0 escribe el resultado de este bloque en la memoria global
   if (tid == 0) res[blkId] = tmpd[0];
 }
-__global__ int derivative(float Z){
-    //if (Z > 0) return 1; 
-    //else return 0;
-}
 
 __device__ void transposeMatrix(float *A, float *B, int row, int col){
 
@@ -184,7 +180,7 @@ __global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOu
     //dW[last_column - 1] 1= 1 / m * dZ1 *(dot prod) transpose(X)
     //db[last_column - 1] 1= 1 / m * sum(dZ[last_column - 1])
 
-    __shared__ float tmpdZ2[nOutput]
+    /*__shared__ float tmpdZ2[nOutput]
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx < batchSize){
@@ -203,7 +199,62 @@ __global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOu
       }
       //Derivative b
       
+    }*/ç
+    // Derivative dZ2
+    substractMat<<<6, 10>>>(nOutput, batchSize, actL2, Y, dZ2);
+    // Derivative dW2
+    transpose<<<6, 10>>>(nOutput, batchSize, actL1, actL1T);
+    matMult<<<grid, block>>>(nOutput, nOutput, batchSize, dZ2, actL1T, res);
+    scalarProdMat<<<grid, block>>>(nOutput, nOutput, batchSize, res, dW2);
+    // Derivative db2
+
+
+    // Derivative Z1
+    derivativeReLu<<<grid, block>>>(nOutput, batchSize, Z1, gZ1);
+    transpose<<<6, 10>>>(nOutput, nOutput, w2, w2T);
+    matMult<<<grid, block>>>(nOutput, batchSize,nOutput, w2T, dZ2, aux2);
+    elementWiseProd<<<grid, block>>>(nOutput, batchSize, aux2, gZ1, dZ1);
+    
+    //Derivative W1
+    
+}
+
+__global__ void elementWiseProd(int N, int M, float *A, float *B, float *C) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N && j < M) {
+        C[i * M + j] = A[i * M + j] * B[i * M + j];
     }
+}
+
+__global__ void subtractMat(int N, int M, float *A, float *B, float *C) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N && j < M) {
+        C[i * M + j] = A[i * M + j] - B[i * M + j];
+    }
+}
+
+__global__ void scalarProdMat(int N, int M, float value, float *A, float *C) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N && j < M) {
+        C[i * M + j] = A[i * M + j] / value;
+    }
+}
+
+__global__ int derivative(int N, int M, float *A, float *C){
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N && j < M) {
+        if (A[i*M + j] > 0) C[i*M + j] = 1;
+        else C[i*M + j] = 0;
+    }
+    
 }
 
 __global__ void forwardPass(int nFeatures, int batchSize, int nHiddenLayer, int nOutput,
