@@ -416,4 +416,35 @@ void seqSoftmax(int nOutput, int batchSize, float *input, float *output)
     }
 }
 
+void seqElementWiseProd(int N, int M, float *A, float *B, float *C){
+    for (int i = 0; i < N; ++i){
+        for(int j = 0; j < M; ++j){
+            C[i*M + j] = A[i*M + j] * B[i*M + j];
+        }
+    }
+}
 
+void seqSubstractMat(int N, int M, float *A, float *B, float *C){
+    for (int i = 0; i < N; ++i){
+        for(int j = 0; j < M; ++j){
+            C[i*M + j] = A[i*M + j] - B[i*M + j];
+        }
+    }
+}
+
+void seqScalarProdMat(int N, int M, float value, float *A, float *C){
+    for (int i = 0; i < N; ++i){
+        for(int j = 0; j < M; ++j){
+            C[i*M + j] = A[i*M + j]/value;
+        }
+    }
+}
+
+void seqDerivativeReLU(int N, int M, float *A, float *C){
+    for (int i = 0; i < N; ++i){
+        for(int j = 0; j < M; ++j){
+            if (A[i*M + j] > 0) C[i*M + j] = 1;
+            else C[i*M + j] = 0
+        }
+    }
+}
