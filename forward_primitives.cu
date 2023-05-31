@@ -142,6 +142,8 @@ int main()
 
     cudaEventRecord(E0, 0);
     cudaEventSynchronize(E0);
+
+    //forward pass
     transpose<<<6, 10>>>(batchSize, nFeatures, d_input, d_inputT);
     
     matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_weights, d_inputT, d_Z1);
@@ -163,6 +165,9 @@ int main()
     // seqSoftmax(nOutput, batchSize, h_Z2, h_result);
     // cudaMemcpy(d_result, h_result, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
     categoricalCrossEntropy<<<batchSize, nOutput>>>(nOutput, batchSize, d_labels, d_result, d_loss);
+
+    // backprop
+
 
     cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
 
