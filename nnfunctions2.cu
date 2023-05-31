@@ -140,7 +140,9 @@ __device__ void transposeMatrix(float *A, float *B, int row, int col){
     B[idy + row*idx] = A[idx + col*idy];
   }
 }
-__global__ void updateLayers(){
+__global__ void updateLayers( double alpha, 
+                              float* dW1, float *dW2
+                              float *W1, float *W2){
     /*
     Updates weight, biases suing gradient descendent method using backprop
     Given:
@@ -154,9 +156,16 @@ __global__ void updateLayers(){
     //for each layer:
     //W_i = W_i - aplha * dW_i
     //b_i = b_i - alpha * db1
+
+    scalarProdMat<<<grid, block>>>(nOutput, nOutput, alpha, dW1, dW1alpha);
+    substractMat<<<grid, block>>>(nHiddenLayer, nOutput, W1, dW1alpha);
+
+    scalarProdMat<<<grid, block>>>(nFeatures, nHiddenLayer, alpha, dW2, dW2alpha);
+    substractMat<<<grid, block>>>(nFeatures, nHiddenLayer, W2, dW2alpha);
+
 }
 __global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOutput, int nLayers,
-                        float *hiddenWeights, float *outputWeights, float *actL1, float *actL2, float *Y,
+                        float *X, float *hiddenWeights, float *outputWeights, float *actL1, float *actL2, float *Y,
                         float *dZ1, float dZ2, float dW1, float *dW2, float *db1, float *db2) {
     /*
     Given:
@@ -205,18 +214,20 @@ __global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOu
     // Derivative dW2
     transpose<<<6, 10>>>(nOutput, batchSize, actL1, actL1T);
     matMult<<<grid, block>>>(nOutput, nOutput, batchSize, dZ2, actL1T, res);
-    scalarProdMat<<<grid, block>>>(nOutput, nOutput, batchSize, res, dW2);
+    scalarDivMat<<<grid, block>>>(nOutput, nOutput, batchSize, res, dW2);
     // Derivative db2
 
 
     // Derivative Z1
     derivativeReLu<<<grid, block>>>(nOutput, batchSize, Z1, gZ1);
-    transpose<<<6, 10>>>(nOutput, nOutput, w2, w2T);
+    transpose<<<6, 10>>>(nHiddenLayer, nOutput, w2, w2T);
     matMult<<<grid, block>>>(nOutput, batchSize,nOutput, w2T, dZ2, aux2);
     elementWiseProd<<<grid, block>>>(nOutput, batchSize, aux2, gZ1, dZ1);
     
     //Derivative W1
-    
+    transpose<<<6, 10>>>(batchSize, nFeatures, X, XT);
+    matMult<<<grid, block>>>(nOutput, nFeatures, batchSize, dZ1, XT, dW1aux);
+    scalarDivMat<<<grid, block>>>(nOutput, nFeatures, batchSize, dW1aux, dW1);
 }
 
 __global__ void elementWiseProd(int N, int M, float *A, float *B, float *C) {
@@ -237,12 +248,21 @@ __global__ void subtractMat(int N, int M, float *A, float *B, float *C) {
     }
 }
 
-__global__ void scalarProdMat(int N, int M, float value, float *A, float *C) {
+__global__ void scalarDivMat(int N, int M, float value, float *A, float *C) {
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (i < N && j < M) {
         C[i * M + j] = A[i * M + j] / value;
+    }
+}
+
+__global__ void scalarProdMat(int N, int M, float value, float *A, float *C) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N && j < M) {
+        C[i * M + j] = A[i * M + j] * value;
     }
 }
 
