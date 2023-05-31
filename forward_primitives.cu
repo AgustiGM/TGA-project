@@ -186,8 +186,8 @@ int main()
 
     // Derivative Z1
     derivativeReLu<<<grid, block>>>(nHiddenLayer, batchSize, d_Z1, d_gZ1);
-    transpose<<<6, 10>>>(nHiddenLayer, nOutput, d_weightsOutput, d_weightsOutputT);
-    matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1); //revise mat sizes
+    transpose<<<6, 10>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+    matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1); 
     elementWiseProd<<<grid, block>>>(nHiddenLayer, batchSize, d_dZ1, d_gZ1, d_dZ1);
     
     //Derivative W1
