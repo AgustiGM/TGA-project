@@ -17,7 +17,7 @@ int main(int argc, char** argv)
 
   float* h, *r;
   float* origin;
-  float *d, *dr;
+  float *d, *dr, *outputs, *outputr;
 
      
   // numero de Threads en cada dimension 
@@ -48,7 +48,9 @@ int main(int argc, char** argv)
  
   // Obtener Memoria en el device
   cudaMalloc((float**)&d, numBytes); 
-  cudaMalloc((float**)&dr, numBytes); 
+  cudaMalloc((float**)&dr, numBytes);
+  cudaMalloc((float**)&outputs, numBytes); 
+  cudaMalloc((float**)&outputr, numBytes);  
 
 
   // Copiar datos desde el host en el device 
@@ -59,18 +61,19 @@ int main(int argc, char** argv)
 
   
   // Ejecutar el kernel 
-  sigmoid<<<dimGrid, dimBlock>>>(N, d);
-  reLU<<<dimGrid, dimBlock>>>(N, dr);
+  //globalSigmoid<<<dimGrid, dimBlock>>>(N, d, outputs);
+  //globalReLU<<<dimGrid, dimBlock>>>(N, dr, outputr);
 
 
   // Obtener el resultado desde el host 
-  cudaMemcpy(h, d, numBytes, cudaMemcpyDeviceToHost); 
-  cudaMemcpy(r, dr, numBytes, cudaMemcpyDeviceToHost); 
+  cudaMemcpy(h, outputs, numBytes, cudaMemcpyDeviceToHost); 
+  cudaMemcpy(r, outputr, numBytes, cudaMemcpyDeviceToHost); 
 
   // Liberar Memoria del device 
   cudaFree(d);
   cudaFree(dr);
-
+  cudaFree(outputs);
+  cudaFree(outputr);
 
 
   
