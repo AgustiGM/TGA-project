@@ -156,7 +156,7 @@ __global__ void updateLayers(){
     //b_i = b_i - alpha * db1
 }
 __global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOutput, int nLayers,
-                        float *hiddenWeights, float *outputWeights, float *actL1, float *actL2, float *Y,
+                        float *X, float *hiddenWeights, float *outputWeights, float *actL1, float *actL2, float *Y,
                         float *dZ1, float dZ2, float dW1, float *dW2, float *db1, float *db2) {
     /*
     Given:
@@ -216,7 +216,9 @@ __global__ void backprop(int nFeatures, int batchSize, int nHiddenLayer, int nOu
     elementWiseProd<<<grid, block>>>(nOutput, batchSize, aux2, gZ1, dZ1);
     
     //Derivative W1
-    
+    transpose<<<6, 10>>>(batchSize, nFeatures, X, XT);
+    matMult<<<grid, block>>>(nOutput, nFeatures, batchSize, dZ1, XT, dW1aux);
+    scalarProdMat<<<grid, block>>>(nOutput, nFeatures, batchSize, dW1aux, dW1);
 }
 
 __global__ void elementWiseProd(int N, int M, float *A, float *B, float *C) {
