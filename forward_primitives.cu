@@ -444,7 +444,7 @@ void seqDerivativeReLU(int N, int M, float *A, float *C){
     for (int i = 0; i < N; ++i){
         for(int j = 0; j < M; ++j){
             if (A[i*M + j] > 0) C[i*M + j] = 1;
-            else C[i*M + j] = 0
+            else C[i*M + j] = 0;
         }
     }
 }
