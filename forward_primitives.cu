@@ -23,7 +23,9 @@ int main()
     float *d_inputT, *d_weightsOutputT, *d_activationT;
     float *d_Z1, *d_Z2;
     float *d_dW1, *d_dW2, *d_dZ1, *d_dZ2;
+    float *d_dW1_alpha, *d_dW2_alpha;
 
+    float *h_dW1_alpha, *h_dW2_alpha;
     float *h_dW1, *h_dW2;
     float *h_Z1, *h_Z2;
     float *h_input, *h_weights, *h_weightsOutput, *h_activation, *h_result;
@@ -60,6 +62,9 @@ int main()
     h_Z1 = (float *)malloc(sizeof(float) * nHiddenLayer * batchSize);
     h_Z2 = (float *)malloc(sizeof(float) * nOutput * batchSize);
 
+    h_dW1_alpha = (float *)malloc(sizeof(float) * nHiddenLayer * nOutput);
+    h_dW2_alpha = (float *)malloc(sizeof(float) * nHiddenLayer * nFeatures);
+
     // Allocate device memory for the input, layers, and result arrays
     cudaMalloc((void **)&d_input, sizeof(float) * nFeatures * batchSize);
     cudaMalloc((void **)&d_inputT, sizeof(float) * nFeatures * batchSize);
@@ -80,6 +85,10 @@ int main()
     cudaMalloc((void **)&d_dW2, sizeof(float) * nHiddenLayer * nOutput);
     cudaMalloc((void **)&d_dZ1, sizeof(float) * nHiddenLayer * batchSize);
     cudaMalloc((void **)&d_dZ2, sizeof(float) * nOutput * batchSize);
+
+
+    cudaMalloc((void **)&d_dW1_alpha, sizeof(float) * nHiddenLayer * nOutput);
+    cudaMalloc((void **)&d_dW2_alpha, sizeof(float) * nHiddenLayer * nFeatures);
 
     // Initialize the neural network weights with random values
     for (int i = 0; i < nFeatures * nHiddenLayer; i++)
@@ -155,7 +164,37 @@ int main()
     // cudaMemcpy(d_result, h_result, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
     categoricalCrossEntropy<<<batchSize, nOutput>>>(nOutput, batchSize, d_labels, d_result, d_loss);
 
-    // backprop
+    /*-----------------------------
+            backpropagation
+    -----------------------------*/
+    // Derivative dZ2
+    substractMat<<<6, 10>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
+    // Derivative dW2
+    transpose<<<6, 10>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+    matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dZ2);
+    scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_dW2);
+
+
+    // Derivative Z1
+    derivativeReLu<<<grid, block>>>(nHiddenLayer, batchSize, d_Z1, d_gZ1);
+    transpose<<<6, 10>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+    matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1); 
+    elementWiseProd<<<grid, block>>>(nHiddenLayer, batchSize, d_dZ1, d_gZ1, d_dZ1);
+    
+    //Derivative W1
+    transpose<<<6, 10>>>(nFeatures, batchSize, d_input, d_inputT);
+    matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_dZ1, d_inputT, d_dW1);
+    scalarDivMat<<<grid, block>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);
+
+    /*-----------------------------
+            update
+    -----------------------------*/
+    scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha);
+    substractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha);
+
+
+    scalarProdMat<<<grid, block>>>(nFeatures, nHiddenLayer, alpha, d_dW2, d_dW2_alpha);
+    substractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha);
 
     cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
 
@@ -270,6 +309,8 @@ int main()
     cudaFree(d_dW2);
     cudaFree(d_dZ2);
     cudaFree(d_inputT);
+    cudaFree(d_dW1_alpha);
+    cudaFree(d_dW2_alpha);
 
     // Free the host memory
     free(h_input);
@@ -399,13 +440,20 @@ void seqSubstractMat(int N, int M, float *A, float *B, float *C)
     }
 }
 
-void seqScalarProdMat(int N, int M, float value, float *A, float *C)
-{
-    for (int i = 0; i < N; ++i)
-    {
-        for (int j = 0; j < M; ++j)
-        {
-            C[i * M + j] = A[i * M + j] / value;
+
+void seqScalarProdMat(int N, int M, float value, float *A, float *C){
+    for (int i = 0; i < N; ++i){
+        for(int j = 0; j < M; ++j){
+            C[i*M + j] = A[i*M + j]*value;
+        }
+    }
+}
+
+void seqScalarDivMat(int N, int M, float value, float *A, float *C){
+    for (int i = 0; i < N; ++i){
+        for(int j = 0; j < M; ++j){
+            C[i*M + j] = A[i*M + j]/value;
+
         }
     }
 }
