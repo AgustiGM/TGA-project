@@ -42,6 +42,7 @@ int main()
     int nHiddenLayer = 3500;
 
     float totalTime;
+    
     // float seqTime;
 
     // Allocate host memory for the input, layers, and result arrays
@@ -146,15 +147,43 @@ int main()
 
     // forward pass
     transpose<<<64, 1024>>>(batchSize, nFeatures, d_input, d_inputT);
+    
+    //error handling
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        printf("Error: %s\n", cudaGetErrorString(err));
+    }
+
     matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_weights, d_inputT, d_Z1);
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        printf("Error: %s\n", cudaGetErrorString(err));
+    }
     sigmoid<<<64, 1024>>>(nHiddenLayer * batchSize, d_Z1, d_activation);
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        printf("Error: %s\n", cudaGetErrorString(err));
+    }
 
     nBlocksN = (nOutput + nThreads - 1) / nThreads;
     nBlocksM = (batchSize + nThreads - 1) / nThreads;
     dim3 grid1(nBlocksM, nBlocksN, 1);
 
     matMult<<<grid1, block>>>(nOutput, batchSize, nHiddenLayer, d_weightsOutput, d_activation, d_Z2);
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        printf("Error: %s\n", cudaGetErrorString(err));
+    }
     globalSoftmaxPrimitive<<<batchSize, nOutput>>>(nOutput, batchSize, d_Z2, d_result);
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        printf("Error: %s\n", cudaGetErrorString(err));
+    }
 
     cudaEventRecord(E1, 0);
     cudaEventSynchronize(E1);
@@ -167,34 +196,34 @@ int main()
     /*-----------------------------
             backpropagation
     -----------------------------*/
-    // Derivative dZ2
-    substractMat<<<6, 10>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
-    // Derivative dW2
-    transpose<<<6, 10>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
-    matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dZ2);
-    scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_dW2);
+    // // Derivative dZ2
+    // substractMat<<<6, 10>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
+    // // Derivative dW2
+    // transpose<<<6, 10>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+    // matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dZ2);
+    // scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_dW2);
 
 
-    // Derivative Z1
-    derivativeReLu<<<grid, block>>>(nHiddenLayer, batchSize, d_Z1, d_gZ1);
-    transpose<<<6, 10>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
-    matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1); 
-    elementWiseProd<<<grid, block>>>(nHiddenLayer, batchSize, d_dZ1, d_gZ1, d_dZ1);
+    // // Derivative Z1
+    // derivativeReLu<<<grid, block>>>(nHiddenLayer, batchSize, d_Z1, d_gZ1);
+    // transpose<<<6, 10>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+    // matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1); 
+    // elementWiseProd<<<grid, block>>>(nHiddenLayer, batchSize, d_dZ1, d_gZ1, d_dZ1);
     
-    //Derivative W1
-    transpose<<<6, 10>>>(nFeatures, batchSize, d_input, d_inputT);
-    matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_dZ1, d_inputT, d_dW1);
-    scalarDivMat<<<grid, block>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);
+    // //Derivative W1
+    // transpose<<<6, 10>>>(nFeatures, batchSize, d_input, d_inputT);
+    // matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_dZ1, d_inputT, d_dW1);
+    // scalarDivMat<<<grid, block>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);
 
-    /*-----------------------------
-            update
-    -----------------------------*/
-    scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha);
-    substractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha);
+    // /*-----------------------------
+    //         update
+    // -----------------------------*/
+    // scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha);
+    // substractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha);
 
 
-    scalarProdMat<<<grid, block>>>(nFeatures, nHiddenLayer, alpha, d_dW2, d_dW2_alpha);
-    substractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha);
+    // scalarProdMat<<<grid, block>>>(nFeatures, nHiddenLayer, alpha, d_dW2, d_dW2_alpha);
+    // substractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha);
 
     cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
 

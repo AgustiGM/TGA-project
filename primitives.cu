@@ -9,7 +9,7 @@ __global__ void matMult(int N, int M, int P, float *A, float *B, float *C)
 
     __shared__ float sA[SIZE][SIZE];
     __shared__ float sB[SIZE][SIZE];
-
+    
     int bx = blockIdx.x;
     int by = blockIdx.y;
     int tx = threadIdx.x;
@@ -55,6 +55,9 @@ __global__ void transpose(int N, int M, float *input, float *output)
             output[j * N + i] = input[i * M + j];
         }
     }
+    if (tid == 0)
+        printf("transpose done\n");
+    
 }
 
 __global__ void globalSoftmaxPrimitive(int nOutput, int batchSize, float *input, float *output) {
@@ -115,7 +118,7 @@ __global__ void scalarProdMat(int N, int M, float value, float *A, float *C) {
     }
 }
 
-__global__ int derivative(int N, int M, float *A, float *C){
+__global__ void derivative(int N, int M, float *A, float *C){
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
 
