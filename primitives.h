@@ -14,4 +14,4 @@ __global__ void scalarDivMat(int N, int M, float value, float *A, float *C);
 
 __global__ void scalarProdMat(int N, int M, float value, float *A, float *C);
 
-__global__ int derivative(int N, int M, float *A, float *C);
+__global__ void derivativeReLu(int N, int M, float *A, float *C);

@@ -1,4 +1,4 @@
-CUDA_HOME   = /usr
+CUDA_HOME   = /usr/local/cuda-12.1
 
 NVCC        = $(CUDA_HOME)/bin/nvcc
 NVCC_FLAGS  = -O3 -Wno-deprecated-gpu-targets -I$(CUDA_HOME)/include --ptxas-options=-v -I$(CUDA_HOME)/sdk/CUDALibraries/common/inc -I./
@@ -61,6 +61,8 @@ all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03)
 test:	$(EXE01)
 
 forwardtest:	$(EXE02)
+
+forward_primitives:	$(EXE03)	
 
 clean:
 	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe
