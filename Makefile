@@ -85,7 +85,7 @@ $(EXE05): $(OBJ05)
 
 
 
-all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) 
+all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) $(EXE05)
 
 test:	$(EXE01)
 

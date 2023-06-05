@@ -55,8 +55,6 @@ __global__ void transpose(int N, int M, float *input, float *output)
             output[j * N + i] = input[i * M + j];
         }
     }
-    if (tid == 0)
-        printf("transpose done\n");
     
 }
 
