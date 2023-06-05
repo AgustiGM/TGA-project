@@ -24,12 +24,15 @@ int main()
     float *d_Z1, *d_Z2;
     float *d_dW1, *d_dW2, *d_dZ1, *d_dZ2;
     float *d_dW1_alpha, *d_dW2_alpha;
+    float *d_gZ1;
 
+    float *h_gZ1;
     float *h_dW1_alpha, *h_dW2_alpha;
     float *h_dW1, *h_dW2;
     float *h_Z1, *h_Z2;
     float *h_input, *h_weights, *h_weightsOutput, *h_activation, *h_result;
     float *h_inputT, *h_weightsOutputT, *h_activationT;
+
 
     cudaEvent_t E0, E1, E2, E3;
 
@@ -65,6 +68,7 @@ int main()
 
     h_dW1_alpha = (float *)malloc(sizeof(float) * nHiddenLayer * nOutput);
     h_dW2_alpha = (float *)malloc(sizeof(float) * nHiddenLayer * nFeatures);
+    h_gZ1 = (float *)malloc(sizeof(float) * nHiddenLayer * batchSize);
 
     // Allocate device memory for the input, layers, and result arrays
     cudaMalloc((void **)&d_input, sizeof(float) * nFeatures * batchSize);
@@ -90,7 +94,49 @@ int main()
 
     cudaMalloc((void **)&d_dW1_alpha, sizeof(float) * nHiddenLayer * nOutput);
     cudaMalloc((void **)&d_dW2_alpha, sizeof(float) * nHiddenLayer * nFeatures);
+    cudaMalloc((void **)&d_gZ1, sizeof(float) * nHiddenLayer * batchSize);
+    
+    //=====================================================================
+    // TEST KERNEL ZONE
+    
+    //Test subtractMat, scalarDivMat, saclatProdMat, elementWiseProd
+    /*
+    int nFeatures = 2*2;
+    int batchSize = 8;
+    int nOutput = 15;
+    int nHiddenLayer = 8;
+    
+    
+    for (int i = 0; i < nHiddenLayer * nFeatures; i++)
+    {
+        h_weights[i] = 1;
+    }
 
+    for (int i = 0; i < nHiddenLayer * nFeatures; i++)
+    {
+        h_dW1_alpha[i] = 2;
+    }
+
+    for (int i = 0; i < nHiddenLayer * nFeatures; i++)
+    {
+        h_dW1[i] = 2;
+    }
+    cudaMemcpy(d_weights, h_weights, sizeof(float) * nHiddenLayer * nFeatures, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dW1_alpha, h_dW1_alpha, sizeof(float) * nHiddenLayer * nFeatures, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dW1, h_dW1, sizeof(float) * nHiddenLayer * nFeatures, cudaMemcpyHostToDevice);
+    //scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha); WORKS
+    // scalarDivMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha); WORKS
+    //subtractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha, d_weights); WORKS
+    // elementWiseProd<<<grid, block>>>(nHiddenLayer, nFeatures, d_dW1_alpha, d_dW1, d_dW1_alpha); WORKS
+
+    //cudaMemcpy(h_weights, d_weights, sizeof(float) * nHiddenLayer * nFeatures, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_dW1_alpha, d_dW1_alpha, sizeof(float) * nHiddenLayer * nFeatures, cudaMemcpyDeviceToHost);
+
+    for(int k = 0; k < nHiddenLayer * nFeatures; ++k) {
+        float res = h_dW1_alpha[k];
+        printf("res: %f\n", res);
+    }*/
+    //=====================================================================
     // Initialize the neural network weights with random values
     for (int i = 0; i < nFeatures * nHiddenLayer; i++)
     {
@@ -130,8 +176,11 @@ int main()
     cudaMemcpy(d_labels, h_labels, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
 
     int nThreads = 32;
-    int nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
-    int nBlocksM = (batchSize + nThreads - 1) / nThreads;
+
+    int nBlocksN = (nHiddenLayer+nThreads-1)/nThreads; 
+    int nBlocksM = (batchSize+nThreads-1)/nThreads; 
+    float alpha = 3.f;
+
 
     dim3 grid(nBlocksM, nBlocksN, 1);
     dim3 block(nThreads, nThreads, 1);
@@ -142,11 +191,15 @@ int main()
 
     // Call the forwardPass CUDA kernel
 
+
     cudaEventRecord(E0, 0);
     cudaEventSynchronize(E0);
 
-    // forward pass
+    //==============================
+    //      FORWARD PASS
+    //==============================
     transpose<<<64, 1024>>>(batchSize, nFeatures, d_input, d_inputT);
+
     
     //error handling
     cudaError_t err = cudaGetLastError();
@@ -173,11 +226,13 @@ int main()
     dim3 grid1(nBlocksM, nBlocksN, 1);
 
     matMult<<<grid1, block>>>(nOutput, batchSize, nHiddenLayer, d_weightsOutput, d_activation, d_Z2);
+
     err = cudaGetLastError();
     if (err != cudaSuccess)
     {
         printf("Error: %s\n", cudaGetErrorString(err));
     }
+
     globalSoftmaxPrimitive<<<batchSize, nOutput>>>(nOutput, batchSize, d_Z2, d_result);
     err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -193,44 +248,45 @@ int main()
     // cudaMemcpy(d_result, h_result, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
     categoricalCrossEntropy<<<batchSize, nOutput>>>(nOutput, batchSize, d_labels, d_result, d_loss);
 
-    /*-----------------------------
-            backpropagation
-    -----------------------------*/
-    // // Derivative dZ2
-    // substractMat<<<6, 10>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
-    // // Derivative dW2
-    // transpose<<<6, 10>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
-    // matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dZ2);
-    // scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_dW2);
+
+    //==============================
+    //      BACKPROPAGATION 
+    //==============================
+    // Derivative dZ2
+    subtractMat<<<6, 10>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
+    // Derivative dW2
+    transpose<<<6, 10>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+    matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dZ2);
+    scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_dW2);
 
 
-    // // Derivative Z1
-    // derivativeReLu<<<grid, block>>>(nHiddenLayer, batchSize, d_Z1, d_gZ1);
-    // transpose<<<6, 10>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
-    // matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1); 
-    // elementWiseProd<<<grid, block>>>(nHiddenLayer, batchSize, d_dZ1, d_gZ1, d_dZ1);
+    // Derivative Z1
+    derivativeReLu<<<grid, block>>>(nHiddenLayer, batchSize, d_Z1, d_gZ1);
+    transpose<<<6, 10>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+    matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1); 
+    elementWiseProd<<<grid, block>>>(nHiddenLayer, batchSize, d_dZ1, d_gZ1, d_dZ1);
+
     
     // //Derivative W1
     // transpose<<<6, 10>>>(nFeatures, batchSize, d_input, d_inputT);
     // matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_dZ1, d_inputT, d_dW1);
     // scalarDivMat<<<grid, block>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);
 
-    // /*-----------------------------
-    //         update
-    // -----------------------------*/
-    // scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha);
-    // substractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha);
+    //==============================
+    //      UPDATE
+    //==============================
+    scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha);
+    subtractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha, d_weights);
 
+    scalarProdMat<<<grid, block>>>(nFeatures, nHiddenLayer, alpha, d_dW2, d_dW2_alpha);
+    subtractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha, d_weightsOutput);
 
-    // scalarProdMat<<<grid, block>>>(nFeatures, nHiddenLayer, alpha, d_dW2, d_dW2_alpha);
-    // substractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha);
-
-    cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
+    //cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
 
     cudaEventElapsedTime(&totalTime, E0, E1);
 
     // Copy the result data back to the host
-    cudaMemcpy(h_result, d_result, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
+    //cudaMemcpy(h_result, d_result, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
 
 
     float *h_temp = (float *)malloc(sizeof(float) * nOutput * batchSize);
@@ -301,8 +357,10 @@ int main()
     //     }
     // }
 
-    int numMatrixMult1Ops = 2.0f * batchSize * nFeatures * nHiddenLayer; // input x weights
-    int numMatrixMult2Ops = 2.0f * batchSize * nHiddenLayer * nOutput;   // activationL1 x weightsOutput
+
+    int numMatrixMult1Ops = 2.0f*batchSize * nFeatures * nHiddenLayer; // input x weights
+    int numMatrixMult2Ops = 2.0f*batchSize * nHiddenLayer * nOutput;   // activationL1 x weightsOutput
+
 
     // Estimate the floating-point operations for the additions
     // Each matrix multiplication involves (nFeatures - 1) additions
@@ -341,6 +399,9 @@ int main()
     cudaFree(d_dW1_alpha);
     cudaFree(d_dW2_alpha);
 
+    cudaFree(d_gZ1);
+
+
     // Free the host memory
     free(h_input);
     free(h_weights);
@@ -361,6 +422,10 @@ int main()
     free(h_dW2_seq);
     free(h_dZ2);
     free(h_dZ1);
+
+    free(h_gZ1);
+
+
 }
 // C(N × M) ← A(N × P) · B (P × M)
 void seqMatMult(int N, int M, int P, float *A, float *B, float *C)
@@ -458,13 +523,12 @@ void seqElementWiseProd(int N, int M, float *A, float *B, float *C)
     }
 }
 
-void seqSubstractMat(int N, int M, float *A, float *B, float *C)
-{
-    for (int i = 0; i < N; ++i)
-    {
-        for (int j = 0; j < M; ++j)
-        {
-            C[i * M + j] = A[i * M + j] - B[i * M + j];
+
+void seqSubtractMat(int N, int M, float *A, float *B, float *C){
+    for (int i = 0; i < N; ++i){
+        for(int j = 0; j < M; ++j){
+            C[i*M + j] = A[i*M + j] - B[i*M + j];
+
         }
     }
 }

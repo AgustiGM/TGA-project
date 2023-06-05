@@ -116,7 +116,9 @@ __global__ void scalarProdMat(int N, int M, float value, float *A, float *C) {
     }
 }
 
-__global__ void derivative(int N, int M, float *A, float *C){
+
+__global__ void derivativeReLu(int N, int M, float *A, float *C){
+
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
 

@@ -2,6 +2,7 @@ CUDA_HOME   = /usr/local/cuda-12.1
 
 SELF_DIR 	= $(dir $(lastword $(MAKEFILE_LIST)))
 
+
 NVCC        = $(CUDA_HOME)/bin/nvcc
 NVCC_FLAGS  = -O3 -Wno-deprecated-gpu-targets -I$(CUDA_HOME)/include --ptxas-options=-v -I$(CUDA_HOME)/sdk/CUDALibraries/common/inc -I$(SELF_DIR)  
 LD_FLAGS    = -lcudart -Xlinker "-rpath,$(CUDA_HOME)/lib64" -I$(CUDA_HOME)/sdk/CUDALibraries/common/lib -I$(CUDA_HOME)/include -I$(SELF_DIR) 
@@ -95,7 +96,8 @@ nn_main:	$(EXE05)
 
 forwardtest:	$(EXE02)
 
-primitives:	$(EXE03)
+forward_primitives:	$(EXE03)	
+
 
 clean:
 	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe reader.exe nn_main.exe
