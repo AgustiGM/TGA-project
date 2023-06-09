@@ -51,23 +51,25 @@ int main(int argc, char **argv)
 {
      cudaSetDevice(0);
     int nFeatures, batchSize, nOutput, nHiddenLayer, training_size, testing_size, nEpochs;
+    float learning_rate;
     char *filename_train, *train_labels, *filename_test;
     // todo parse arguments
-    if (argc != 11)
+    if (argc != 12)
     {
-        printf("Usage: ./nn <nFeatures> <batchSize> <nOutput> <nHiddenLayer> <training_size> <testing_size> <nEpochs> <filename_train> <train_labels> <filename_test>\n");
+        printf("Usage: ./nn <nFeatures> <batchSize> <nOutput> <nHiddenLayer> <learning_rate> <training_size> <testing_size> <nEpochs> <filename_train> <train_labels> <filename_test>\n");
         exit(1);
     }
     nFeatures = atoi(argv[1]);
     batchSize = atoi(argv[2]);
     nOutput = atoi(argv[3]);
     nHiddenLayer = atoi(argv[4]);
-    training_size = atoi(argv[5]);
-    testing_size = atoi(argv[6]);
-    nEpochs = atoi(argv[7]);
-    filename_train = argv[8];
-    train_labels = argv[9];
-    filename_test = argv[10];
+    learning_rate = atoi(argv[5]);
+    training_size = atoi(argv[6]);
+    testing_size = atoi(argv[7]);
+    nEpochs = atoi(argv[8]);
+    filename_train = argv[9];
+    train_labels = argv[10];
+    filename_test = argv[11];
 
     // read input
     float *training_input, *training_labels, *testing_input, *testing_labels;
@@ -95,6 +97,8 @@ int main(int argc, char **argv)
 
     // pointers to labels and loss
     float *d_labels, *d_loss;
+
+    float *d_gZ1;
 
     // pointers to host memory
     // float *h_dW1_alpha, *h_dW2_alpha;
@@ -141,6 +145,7 @@ int main(int argc, char **argv)
     cudaMalloc((void **)&d_dZ2, sizeof(float) * nOutput * batchSize);
     cudaMalloc((void **)&d_dW1_alpha, sizeof(float) * nHiddenLayer * nOutput);
     cudaMalloc((void **)&d_dW2_alpha, sizeof(float) * nHiddenLayer * nFeatures);
+    cudaMalloc((void **)&d_gZ1, sizeof(float) * nHiddenLayer * batchSize);
 
     cudaEvent_t E0, E1, E2, E3;
     cudaEventCreate(&E0);
@@ -196,6 +201,7 @@ int main(int argc, char **argv)
         int nThreads = 32;
         int nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
         int nBlocksM = (batchSize + nThreads - 1) / nThreads;
+        float alpha  = learning_rate;
 
         dim3 grid(nBlocksM, nBlocksN, 1);
         dim3 block(nThreads, nThreads, 1);
@@ -244,7 +250,117 @@ int main(int argc, char **argv)
         {
             printf("Error: %s\n", cudaGetErrorString(err));
         }
-  
+
+        // backward
+        
+        // derivative dZ2
+        /*subtractMat<<<grid, block>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error subtract dZ2: %s\n", cudaGetErrorString(err));
+        }
+        // derivative dW2
+        transpose<<<grid, block>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error transpose dW2: %s\n", cudaGetErrorString(err));
+        }
+
+        matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dZ2);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error matMult dW2: %s\n", cudaGetErrorString(err));
+        }
+
+        scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_dW2);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error scalar division dW2: %s\n", cudaGetErrorString(err));
+        }
+        // derivative dZ1
+        derivativeReLu<<<grid, block>>>(nHiddenLayer, batchSize, d_Z1, d_gZ1);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error derivative dZ1: %s\n", cudaGetErrorString(err));
+        }
+
+        transpose<<<grid, block>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error transpose dZ1: %s\n", cudaGetErrorString(err));
+        }
+
+        matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error matMult dZ1: %s\n", cudaGetErrorString(err));
+        }
+
+        elementWiseProd<<<grid, block>>>(nHiddenLayer, batchSize, d_dZ1, d_gZ1, d_dZ1);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error element wise prod dZ1: %s\n", cudaGetErrorString(err));
+        }
+
+        // derivative dW1
+        transpose<<<grid, block>>>(nFeatures, batchSize, d_input, d_inputT);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error transpose dW1: %s\n", cudaGetErrorString(err));
+        }
+
+        matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_dZ1, d_inputT, d_dW1);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error matMult dW1: %s\n", cudaGetErrorString(err));
+        }
+
+        scalarDivMat<<<grid, block>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error scalar division dW1: %s\n", cudaGetErrorString(err));
+        }
+
+        //update
+        // w1 = new_w1
+        scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error scalar prod update W1: %s\n", cudaGetErrorString(err));
+        }
+
+        subtractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha, d_weights);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error subtract update W1: %s\n", cudaGetErrorString(err));
+        }
+        // w2 = new_w2
+        scalarProdMat<<<grid, block>>>(nFeatures, nHiddenLayer, alpha, d_dW2, d_dW2_alpha);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error scalar prod update W2: %s\n", cudaGetErrorString(err));
+        }
+
+        subtractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha, d_weightsOutput);
+        err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+            printf("Error subtract update W2: %s\n", cudaGetErrorString(err));
+        }*/
 
         // cudaMemcpy(h_Z2, d_Z2, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
         // seqSoftmax(nOutput, batchSize, h_Z2, h_result);
@@ -311,4 +427,6 @@ int main(int argc, char **argv)
     cudaFree(d_dW2);
     cudaFree(d_dW1_alpha);
     cudaFree(d_dW2_alpha);
+
+    cudaFree(d_gZ1);
 }
