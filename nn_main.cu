@@ -22,7 +22,7 @@ float *readImageData(char *filename, int size)
     float *fdata = (float *)malloc(size * sizeof(float));
     for (int i = 0; i < size; i++)
     {
-        fdata[i] = (float)data[i];
+        fdata[i] = (float)data[i]/255.0;
     }
     free(data);
     close(fd);
@@ -116,6 +116,8 @@ int main(int argc, char **argv)
     float *h_inputT, *h_weightsOutputT, *h_activationT;
     float *h_labels, *h_loss;
 
+    float *h_dZ2;
+
     // Allocate host memory for the input, layers, and result arrays
     h_input = (float *)malloc(sizeof(float) * nFeatures * batchSize);
 
@@ -130,6 +132,8 @@ int main(int argc, char **argv)
     h_loss = (float *)malloc(sizeof(float) * batchSize);
 
     h_labels = (float *)malloc(sizeof(float) * nOutput * batchSize);
+
+    h
 
     // Allocate device memory for the input, layers, and result arrays
     cudaMalloc((void **)&d_input, sizeof(float) * nFeatures * batchSize);
@@ -169,6 +173,8 @@ int main(int argc, char **argv)
     {
 
         h_weights[i] = -1.0f + 2.0f * rand() / (float)RAND_MAX;
+        if (i == 0)
+            printf("weight: %f\n", h_weights[i]);
     }
     for (int i = 0; i < nHiddenLayer * nOutput; i++)
     {
@@ -187,7 +193,7 @@ int main(int argc, char **argv)
     cudaEventRecord(E0, 0);
     cudaEventSynchronize(E0);
 
-    for (int i = 0; i < 7; ++i)
+    for (int i = 0; i < iterations; ++i)
     {
         int startIndex = i * nFeatures * batchSize;
         // copy the corresponding inputs into device memory
@@ -232,7 +238,7 @@ int main(int argc, char **argv)
         {
             printf("Error nat: %s\n", cudaGetErrorString(err));
         }
-        sigmoid<<<64, 1024>>>(nHiddenLayer * batchSize, d_Z1, d_activation);
+        reLU<<<64, 1024>>>(nHiddenLayer * batchSize, d_Z1, d_activation);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -249,39 +255,51 @@ int main(int argc, char **argv)
             printf("Error sig: %s\n", cudaGetErrorString(err));
         }
         globalSoftmaxPrimitive<<<batchSize, nOutput>>>(nOutput, batchSize, d_Z2, d_result);
+        cudaMemcpy(h_result, d_result, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
+        for (int j = 0; j < nOutput; j++)
+        {
+            printf("result: %f\n", h_result[j]);
+        }
 
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error: %s\n", cudaGetErrorString(err));
         }
-
+         categoricalCrossEntropy<<<batchSize, nOutput>>>(nOutput, batchSize, d_labels, d_result, d_loss);
+        if (err != cudaSuccess)
+        {
+            printf("Error sig: %s\n", cudaGetErrorString(err));
+        }
+            cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
+            printf("in iteration %d, loss is %f\n", i, h_loss[0]);
 
         // backward
         
         // derivative dZ2
         subtractMat<<<grid, block>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
+
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error subtract dZ2: %s\n", cudaGetErrorString(err));
         }
         // derivative dW2
-        transpose<<<grid, block>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+        transpose<<<64, 1024>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error transpose dW2: %s\n", cudaGetErrorString(err));
         }
 
-        matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dZ2);
+        matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dW2);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error matMult dW2: %s\n", cudaGetErrorString(err));
         }
 
-        scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_dW2);
+        scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dW2, d_dW2);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -295,7 +313,7 @@ int main(int argc, char **argv)
             printf("Error derivative dZ1: %s\n", cudaGetErrorString(err));
         }
 
-        transpose<<<grid, block>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+        transpose<<<64, 1024>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -317,12 +335,12 @@ int main(int argc, char **argv)
         }
 
         // derivative dW1
-        transpose<<<grid, block>>>(nFeatures, batchSize, d_input, d_inputT);
-        err = cudaGetLastError();
-        if (err != cudaSuccess)
-        {
-            printf("Error transpose dW1: %s\n", cudaGetErrorString(err));
-        }
+        // transpose<<<grid, block>>>(nFeatures, batchSize, d_input, d_inputT);
+        // err = cudaGetLastError();
+        // if (err != cudaSuccess)
+        // {
+        //     printf("Error transpose dW1: %s\n", cudaGetErrorString(err));
+        // }
 
         matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_dZ1, d_inputT, d_dW1);
         err = cudaGetLastError();
@@ -348,6 +366,11 @@ int main(int argc, char **argv)
         }
 
         subtractMat<<<grid, block>>>(nHiddenLayer, nFeatures, d_weights, d_dW1_alpha, d_weights);
+
+        cudaMemcpy(h_weights, d_weights, sizeof(float) * nHiddenLayer * nFeatures, cudaMemcpyDeviceToHost);
+        printf("in iteration %d, weights is %f\n", i, h_weights[0]);
+        
+
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -362,6 +385,8 @@ int main(int argc, char **argv)
         }
 
         subtractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha, d_weightsOutput);
+      
+        
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -371,11 +396,7 @@ int main(int argc, char **argv)
         // cudaMemcpy(h_Z2, d_Z2, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
         // seqSoftmax(nOutput, batchSize, h_Z2, h_result);
         // cudaMemcpy(d_result, h_result, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
-        categoricalCrossEntropy<<<batchSize, nOutput>>>(nOutput, batchSize, d_labels, d_result, d_loss);
-        if (err != cudaSuccess)
-        {
-            printf("Error sig: %s\n", cudaGetErrorString(err));
-        }
+        
 
         //backward pass
 
@@ -384,8 +405,7 @@ int main(int argc, char **argv)
 
 
 
-        cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
-        printf("in iteration %d, loss is %f\n", i, h_loss[0]);
+
     }
     
     cudaEventRecord(E1, 0);
@@ -406,7 +426,7 @@ int main(int argc, char **argv)
     int numAdditionOps2 = batchSize * (nOutput + nOutput - 1 + nOutput) + 3*(batchSize * (nOutput - 1));
 
     // Total floating-point operations
-    int totalFloatingPointOps = 7 * (numMatrixMult1Ops + numMatrixMult2Ops + numAdditionOps1 + numAdditionOps2);
+    int totalFloatingPointOps = iterations * (numMatrixMult1Ops + numMatrixMult2Ops + numAdditionOps1 + numAdditionOps2);
     printf("GFLOPs: %4.6f\n", totalFloatingPointOps / (totalTime * 1000000.0));
 
     // free memory in host

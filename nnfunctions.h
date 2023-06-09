@@ -17,7 +17,7 @@
 
 __global__ void sigmoid(int N, float *input, float *output);
 
-__device__ void reLU(int N, float *input, float *output);
+__global__ void reLU(int N, float *input, float *output);
 
 __global__ void globalReLU(int N, float *input, float *output);
 
