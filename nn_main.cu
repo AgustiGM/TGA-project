@@ -29,7 +29,7 @@ float *readImageData(char *filename, int size)
     return fdata;
 }
 
-float *readLabels(char *filename, int size)
+float *readLabels(char *filename, int size, int nLabels)
 {
     int fd = open(filename, O_RDONLY);
     unsigned char buf[8];
@@ -37,10 +37,10 @@ float *readLabels(char *filename, int size)
 
     unsigned char *data = (unsigned char *)malloc(size);
     n = read(fd, data, size);
-    float *fdata = (float *)malloc(size * sizeof(float));
+    float *fdata = (float *)malloc(size * nLabels * sizeof(float));
     for (int i = 0; i < size; i++)
     {
-        fdata[i] = (float)data[i];
+        fdata[i*nLabels + data[i]] = 1.0;
     }
     free(data);
     close(fd);
@@ -49,7 +49,7 @@ float *readLabels(char *filename, int size)
 
 int main(int argc, char **argv)
 {
-     cudaSetDevice(0);
+    cudaSetDevice(0);
     int nFeatures, batchSize, nOutput, nHiddenLayer, training_size, testing_size, nEpochs;
     float learning_rate;
     char *filename_train, *train_labels, *filename_test;
@@ -74,8 +74,16 @@ int main(int argc, char **argv)
     // read input
     float *training_input, *training_labels, *testing_input, *testing_labels;
     training_input = readImageData(filename_train, training_size * nFeatures);
-    training_labels = readLabels(train_labels, training_size);
+    training_labels = readLabels(train_labels, training_size, nOutput);
 
+    for (int i = 0; i < 2; i++)
+    {   
+        for (int j = 0; j < nOutput; j++)
+        {
+            printf("%f ", training_labels[i*nOutput + j]);
+        }
+        printf("\n");
+    }
 
     // srand(87);
     // nFeatures = 28 * 28;
@@ -154,7 +162,6 @@ int main(int argc, char **argv)
     cudaEventCreate(&E2);
     cudaEventCreate(&E3);
 
-
     float totalTime;
 
     // Initialize the neural network weights with random values
@@ -173,12 +180,12 @@ int main(int argc, char **argv)
     cudaMemcpy(d_weightsOutput, h_weightsOutput, sizeof(float) * nHiddenLayer * nOutput, cudaMemcpyHostToDevice);
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
-        {
-            printf("Error before iter: %s\n", cudaGetErrorString(err));
-        }
-    
-         cudaEventRecord(E0, 0);
-        cudaEventSynchronize(E0);
+    {
+        printf("Error before iter: %s\n", cudaGetErrorString(err));
+    }
+
+    cudaEventRecord(E0, 0);
+    cudaEventSynchronize(E0);
 
     for (int i = 0; i < 7; ++i)
     {
@@ -191,7 +198,7 @@ int main(int argc, char **argv)
             printf("Error copy: %s\n", cudaGetErrorString(err));
         }
         cudaMemcpy(d_labels, training_labels + i * nOutput * batchSize, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
-        
+
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -211,8 +218,6 @@ int main(int argc, char **argv)
         // dim3 block(32, 32, 1);
 
         // Call the forwardPass CUDA kernel
-
-   
 
         // forward pass
         transpose<<<64, 1024>>>(batchSize, nFeatures, d_input, d_inputT);
@@ -244,12 +249,13 @@ int main(int argc, char **argv)
             printf("Error sig: %s\n", cudaGetErrorString(err));
         }
         globalSoftmaxPrimitive<<<batchSize, nOutput>>>(nOutput, batchSize, d_Z2, d_result);
-        
+
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error: %s\n", cudaGetErrorString(err));
         }
+
 
         // backward
         
@@ -370,30 +376,39 @@ int main(int argc, char **argv)
         {
             printf("Error sig: %s\n", cudaGetErrorString(err));
         }
+
+        //backward pass
+
+        //parameter update
+
+
+
+
         cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
         printf("in iteration %d, loss is %f\n", i, h_loss[0]);
     }
-          cudaEventRecord(E1, 0);
-        cudaEventSynchronize(E1);
+    
+    cudaEventRecord(E1, 0);
+    cudaEventSynchronize(E1);
 
-    //get total time
+    // get total time
     cudaEventElapsedTime(&totalTime, E0, E1);
     printf("Total time is %f ms\n", totalTime);
-    //gflops calculation
+    // gflops calculation
 
-     int numMatrixMult1Ops = 2.0f * batchSize * nFeatures * nHiddenLayer; // input x weights
+    int numMatrixMult1Ops = 2.0f * batchSize * nFeatures * nHiddenLayer; // input x weights
     int numMatrixMult2Ops = 2.0f * batchSize * nHiddenLayer * nOutput;   // activationL1 x weightsOutput
 
     // Estimate the floating-point operations for the additions
     // Each matrix multiplication involves (nFeatures - 1) additions
 
     int numAdditionOps1 = nHiddenLayer * batchSize;
-    int numAdditionOps2 = batchSize * (nOutput + nOutput - 1 + nOutput);
+    int numAdditionOps2 = batchSize * (nOutput + nOutput - 1 + nOutput) + 3*(batchSize * (nOutput - 1));
 
     // Total floating-point operations
-    int totalFloatingPointOps = 7* (numMatrixMult1Ops + numMatrixMult2Ops + numAdditionOps1 + numAdditionOps2);
-     printf("GFLOPs: %4.6f\n", totalFloatingPointOps / (totalTime * 1000000.0));
-    
+    int totalFloatingPointOps = 7 * (numMatrixMult1Ops + numMatrixMult2Ops + numAdditionOps1 + numAdditionOps2);
+    printf("GFLOPs: %4.6f\n", totalFloatingPointOps / (totalTime * 1000000.0));
+
     // free memory in host
 
     free(h_weights);
