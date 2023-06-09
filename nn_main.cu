@@ -254,7 +254,7 @@ int main(int argc, char **argv)
         // backward
         
         // derivative dZ2
-        /*subtractMat<<<grid, block>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
+        subtractMat<<<grid, block>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -360,7 +360,7 @@ int main(int argc, char **argv)
         if (err != cudaSuccess)
         {
             printf("Error subtract update W2: %s\n", cudaGetErrorString(err));
-        }*/
+        }
 
         // cudaMemcpy(h_Z2, d_Z2, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
         // seqSoftmax(nOutput, batchSize, h_Z2, h_result);
