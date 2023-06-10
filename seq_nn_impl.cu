@@ -15,11 +15,12 @@ float *readImageData(char *filename, int size)
     int n = read(fd, buf, 16);
 
     unsigned char *data = (unsigned char *)malloc(size);
-    n = read(fd, data, size);
+    n = read(fd, data, size*sizeof(unsigned char));
     float *fdata = (float *)malloc(size * sizeof(float));
     for (int i = 0; i < size; i++)
     {
-        fdata[i] = (float)data[i] / 255.0;
+        fdata[i] = (float) (data[i]) / 255.0f;
+        
     }
     free(data);
     close(fd);
@@ -79,14 +80,23 @@ int main(int argc, char **argv)
     training_input = readImageData(filename_train, training_size * nFeatures);
     training_labels = readLabels(train_labels, training_size, nOutput);
 
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < nOutput; j++)
-        {
-            printf("%f ", training_labels[i * nOutput + j]);
-        }
-        printf("\n");
-    }
+    // for (int i = 0; i < 28; i++)
+    // {
+    //     for (int j = 0; j < 28; j++)
+    //     {
+    //         printf("%d ", (int) (training_input[i*28  + j] * 255.0f));
+    //     }
+    //     printf("\n");
+    // }
+
+    // for (int i = 0; i < 4; i++)
+    // {
+    //     for (int j = 0; j < nOutput; j++)
+    //     {
+    //         printf("%f ", training_labels[i * nOutput + j]);
+    //     }
+    //     printf("\n");
+    // }
 
     // define variables to hold weights
 
@@ -143,6 +153,8 @@ int main(int argc, char **argv)
     for (int epoch = 0; epoch < nEpochs; ++epoch)
     {
         printf("Epoch %d\n", epoch);
+        float e_accuracy = 0.0f;
+        printf("eaccuracy %f\n", e_accuracy);
 
         for (int i = 0; i < nIterations; ++i)
         {
@@ -158,7 +170,7 @@ int main(int argc, char **argv)
             seqMatMult(nHiddenLayer, batchSize, nFeatures, h_weights, h_inputT, h_Z1);
 
             // compute activation
-            seqReLu(nHiddenLayer, batchSize, h_Z1, h_activation);
+            seqSigmoid(nHiddenLayer, batchSize, h_Z1, h_activation);
 
             // compute Z2
             // C(N × M) ← A(N × P) · B (P × M)
@@ -176,6 +188,7 @@ int main(int argc, char **argv)
             seqCrossEntropy(batchSize, nOutput, h_resultT, h_labels, h_loss);
 
             float seqAcc = seqAccuracy(batchSize, nOutput, h_resultT, h_labels);
+            e_accuracy += seqAcc;
 
             float avg_loss = 0.0;
             for (int j = 0; j < batchSize * nOutput; j++)
@@ -185,15 +198,15 @@ int main(int argc, char **argv)
             avg_loss /= batchSize * nOutput;
 
             // compute gradients
-            if (i == 0)
-                printf("loss: %f; accuracy: %f\n", avg_loss, seqAcc);
+            // if (i == 0)
+            //     printf("loss: %f; accuracy: %f\n", avg_loss, seqAcc);
 
-            // compute dZ2
+            // compute dZ2 (nOutputxbatchSize)
             seqSubstractMat(batchSize, nOutput, h_result, h_labelsT, h_dZ2);
 
             // if (i == 0)
             // {
-            //     for (int j = 0; j < 4; j++)
+            //     for (int j = 0; j < 1; j++)
             //     {
             //         float sum = 0.0f;
             //         for (int k = 0; k < nOutput; k++)
@@ -211,7 +224,7 @@ int main(int argc, char **argv)
 
             // print dZ2
 
-            // transpose h_activation
+            // transpose h_activation to batchSize x nHiddenLayer
             seqTranspose(nHiddenLayer, batchSize, h_activation, h_activationT);
 
             // check that the result is correct
@@ -228,12 +241,12 @@ int main(int argc, char **argv)
 
             // compute dW2
             // C(N × M) ← A(N × P) · B (P × M)
+            // h_dW2 nOutputxnHiddenLayer
             seqMatMult(nOutput, nHiddenLayer, batchSize, h_dZ2, h_activationT, h_dW2);
 
-            
             seqScalarDivMat(nOutput, nHiddenLayer, h_dW2, batchSize, h_dW2);
 
-            // transpose h_weightsOutput
+            // transpose h_weightsOutput to nHiddenLayer x nOutput
             seqTranspose(nOutput, nHiddenLayer, h_weightsOutput, h_weightsOutputT);
 
             for (int j = 0; j < nOutput; j++)
@@ -248,10 +261,11 @@ int main(int argc, char **argv)
             }
 
             // compute dZ1
+            // C(N × M) ← A(N × P) · B (P × M)
             seqMatMult(nHiddenLayer, batchSize, nOutput, h_weightsOutputT, h_dZ2, h_dZ1);
 
             // compute derivative of z1
-            seqDerivativeReLu(nHiddenLayer, batchSize, h_Z1, h_dgZ1);
+            seqSigmoidDerivative(nHiddenLayer, batchSize, h_activation, h_dgZ1);
 
             // compute dZ1
 
@@ -312,7 +326,6 @@ int main(int argc, char **argv)
             //     }
             //     printf("\n");
             // }
-            
 
             // compute dw2 * alpha
             seqScalarProdMat(nOutput, nHiddenLayer, h_dW2, learning_rate, h_dW2);
@@ -331,6 +344,9 @@ int main(int argc, char **argv)
             //     }
             // }
         }
+        printf("nIterations %d\n", nIterations);
+        printf("eaccuracy %f\n", e_accuracy);
+        printf("epoch %d accuracy %f\n", epoch, e_accuracy / nIterations);
     }
 
     // free memory

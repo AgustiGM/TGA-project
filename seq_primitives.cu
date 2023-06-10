@@ -21,6 +21,7 @@ void seqTranspose(int n, int m, float *A, float *B)
     }
 }
 
+// C(N × M) ← A(N × P) · B (P × M)
 void seqMatMult(int n, int m, int p, float *A, float *B, float *C)
 {
     for (int i = 0; i < n; i++)
@@ -117,7 +118,7 @@ void seqCrossEntropy(int batchSize, int nOutput, float *h_result, float *h_label
         h_loss[i] = 0.0f;
         for (int j = 0; j < nOutput; j++)
         {
-            h_loss[i] -= h_labels[i * nOutput + j] * log(h_result[i * nOutput + j] != 0 ? h_result[i * nOutput + j] : 1e-30f);
+            h_loss[i] -= h_labels[i * nOutput + j] * log(h_result[i * nOutput + j]);
         }
     }
 }
@@ -141,7 +142,7 @@ float seqAccuracy(int batchSize, int nOutput, float *h_result, float *h_labels) 
     for (int i = 0; i < batchSize; i++)
     {
         int maxIdx = seqMaxIdx(nOutput, &h_result[i * nOutput]);
-        if (h_labels[i * nOutput + maxIdx] == 1.0f)
+        if (h_labels[i * nOutput + maxIdx] != 0.0f)
         {
             // printf("In example %d, the network predicted %d, which is correct\n", i, maxIdx);
             // printf("h_result: %f\n, h_labels: %f\n", h_result[i * nOutput + maxIdx], h_labels[i * nOutput + maxIdx]);
@@ -152,5 +153,21 @@ float seqAccuracy(int batchSize, int nOutput, float *h_result, float *h_labels) 
     // printf("Correct: %d\n", correct);
     // printf("Batch size: %d\n", batchSize);
     return (float)correct / (float)batchSize;
+}
+
+void seqSigmoid(int n, int m, float *A, float *B)
+{
+    for (int i = 0; i < n*m; i++)
+    {
+        B[i] = 1.0f / (1.0f + exp(-A[i]));
+    }
+}
+
+void seqSigmoidDerivative(int n, int m, float *A, float *B)
+{
+    for (int i = 0; i < n*m; i++)
+    {
+        B[i] = A[i] * (1.0f - A[i]);
+    }
 }
 

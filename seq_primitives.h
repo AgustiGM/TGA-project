@@ -23,3 +23,7 @@ void seqCrossEntropy(int batchSize, int nOutput, float *h_result, float *h_label
 float seqAccuracy(int batchSize, int nOutput, float *h_result, float *h_labels);
 
 int seqMaxIndex(int n, float *A);
+
+void seqSigmoid(int n, int m, float *A, float *B);
+
+void seqSigmoidDerivative(int n, int m, float *A, float *B);
