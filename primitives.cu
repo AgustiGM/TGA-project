@@ -81,50 +81,48 @@ __global__ void globalSoftmaxPrimitive(int nOutput, int batchSize, float *input,
 }
 
 __global__ void elementWiseProd(int N, int M, float *A, float *B, float *C) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
-    if (i < N && j < M) {
-        C[i * M + j] = A[i * M + j] * B[i * M + j];
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] * B[i];
     }
 }
 
 __global__ void subtractMat(int N, int M, float *A, float *B, float *C) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
-    if (i < N && j < M) {
-        C[i * M + j] = A[i * M + j] - B[i * M + j];
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] - B[i];
     }
 }
 
 __global__ void scalarDivMat(int N, int M, float value, float *A, float *C) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
-    if (i < N && j < M) {
-        C[i * M + j] = A[i * M + j] / value;
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] / value;
     }
 }
 
 __global__ void scalarProdMat(int N, int M, float value, float *A, float *C) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
-    if (i < N && j < M) {
-        C[i * M + j] = A[i * M + j] * value;
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] * value;
     }
 }
 
 
 __global__ void derivativeReLu(int N, int M, float *A, float *C){
 
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
-    if (i < N && j < M) {
-        if (A[i*M + j] > 0) C[i*M + j] = 1;
-        else C[i*M + j] = 0;
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        if (A[i] > 0) {
+            C[i] = 1;
+        } else {
+            C[i] = 0;
+        }
     }
     
 }

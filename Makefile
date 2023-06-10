@@ -4,7 +4,7 @@ SELF_DIR 	= $(dir $(lastword $(MAKEFILE_LIST)))
 
 
 NVCC        = $(CUDA_HOME)/bin/nvcc
-NVCC_FLAGS  = -O3 -Wno-deprecated-gpu-targets -I$(CUDA_HOME)/include --ptxas-options=-v -I$(CUDA_HOME)/sdk/CUDALibraries/common/inc -I$(SELF_DIR)  
+NVCC_FLAGS  = -O3 -Wno-deprecated-gpu-targets -I$(CUDA_HOME)/include --ptxas-options=-v -I$(CUDA_HOME)/sdk/CUDALibraries/common/inc -I$(SELF_DIR) -g  
 LD_FLAGS    = -lcudart -Xlinker "-rpath,$(CUDA_HOME)/lib64" -I$(CUDA_HOME)/sdk/CUDALibraries/common/lib -I$(CUDA_HOME)/include -I$(SELF_DIR) 
 
 # NVCC        = $(CUDA_HOME)/bin/nvcc
@@ -19,6 +19,8 @@ EXE02			= forwardtest.exe
 EXE03			= forward_primitives.exe
 EXE04			= reader.exe
 EXE05			= nn_main.exe
+EXE06			= dw1_test.exe
+EXE07			= seq_nn_impl.exe
 
 OBJ00	        = main.o nnfunctions.o utils.o
 OBJ01	        = test.o nnfunctions.o utils.o
@@ -26,6 +28,8 @@ OBJ02	        = forwardtest.o nnfunctions.o utils.o
 OBJ03	        = forward_primitives.o nnfunctions.o utils.o primitives.o 
 OBJ04	        = reader.o 
 OBJ05	        = nn_main.o primitives.o nnfunctions.o utils.o
+OBJ06	        = dw1_test.o primitives.o nnfunctions.o utils.o
+OBJ07	        = seq_nn_impl.o seq_primitives.o
 
 default: $(EXE00)
 
@@ -49,7 +53,15 @@ reader.o: reader.cu
 nn_main.o: nn_main.cu nnfunctions.h utils.h primitives.h
 	$(NVCC) -c -o $@ nn_main.cu $(NVCC_FLAGS) $(PROG_FLAGS)
 
+dw1_test.o: dw1_test.cu nnfunctions.h utils.h primitives.h
+	$(NVCC) -c -o $@ dw1_test.cu $(NVCC_FLAGS) $(PROG_FLAGS)
 
+seq_nn_impl.o: seq_nn_impl.cu seq_primitives.h
+	$(NVCC) -c -o $@ seq_nn_impl.cu $(NVCC_FLAGS) $(PROG_FLAGS)
+
+
+seq_primitives.o: seq_primitives.cu seq_primitives.h
+	$(NVCC) -c -o $@ seq_primitives.cu $(NVCC_FLAGS)
 
 input_utils.o: input_utils.cu input_utils.h
 	$(NVCC) -c -o $@ input_utils.cu $(NVCC_FLAGS)
@@ -83,10 +95,16 @@ $(EXE04): $(OBJ04)
 $(EXE05): $(OBJ05)
 	$(NVCC) $(OBJ05) -o $(EXE05) $(LD_FLAGS)
 
+$(EXE06): $(OBJ06)
+	$(NVCC) $(OBJ06) -o $(EXE06) $(LD_FLAGS)
+
+$(EXE07): $(OBJ07)
+	$(NVCC) $(OBJ07) -o $(EXE07) $(LD_FLAGS)
 
 
 
-all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) $(EXE05)
+
+all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) $(EXE05) $(EXE06) $(EXE07)
 
 test:	$(EXE01)
 
@@ -100,5 +118,5 @@ forward_primitives:	$(EXE03)
 
 
 clean:
-	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe reader.exe nn_main.exe
+	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe reader.exe nn_main.exe dw1_test.exe seq_nn_impl.exe
 

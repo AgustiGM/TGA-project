@@ -22,7 +22,7 @@ float *readImageData(char *filename, int size)
     float *fdata = (float *)malloc(size * sizeof(float));
     for (int i = 0; i < size; i++)
     {
-        fdata[i] = (float)data[i]/255.0;
+        fdata[i] = (float)data[i] / 255.0;
     }
     free(data);
     close(fd);
@@ -40,7 +40,7 @@ float *readLabels(char *filename, int size, int nLabels)
     float *fdata = (float *)malloc(size * nLabels * sizeof(float));
     for (int i = 0; i < size; i++)
     {
-        fdata[i*nLabels + data[i]] = 1.0;
+        fdata[i * nLabels + data[i]] = 1.0;
     }
     free(data);
     close(fd);
@@ -77,10 +77,10 @@ int main(int argc, char **argv)
     training_labels = readLabels(train_labels, training_size, nOutput);
 
     for (int i = 0; i < 2; i++)
-    {   
+    {
         for (int j = 0; j < nOutput; j++)
         {
-            printf("%f ", training_labels[i*nOutput + j]);
+            printf("%f ", training_labels[i * nOutput + j]);
         }
         printf("\n");
     }
@@ -127,13 +127,15 @@ int main(int argc, char **argv)
 
     h_activation = (float *)malloc(sizeof(float) * nHiddenLayer * batchSize);
 
+    h_activationT = (float *)malloc(sizeof(float) * nHiddenLayer * batchSize);
+
     h_result = (float *)malloc(sizeof(float) * nOutput * batchSize);
 
     h_loss = (float *)malloc(sizeof(float) * batchSize);
 
     h_labels = (float *)malloc(sizeof(float) * nOutput * batchSize);
 
-    h
+    h_dZ2 = (float *)malloc(sizeof(float) * nOutput * batchSize);
 
     // Allocate device memory for the input, layers, and result arrays
     cudaMalloc((void **)&d_input, sizeof(float) * nFeatures * batchSize);
@@ -214,7 +216,7 @@ int main(int argc, char **argv)
         int nThreads = 32;
         int nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
         int nBlocksM = (batchSize + nThreads - 1) / nThreads;
-        float alpha  = learning_rate;
+        float alpha = learning_rate;
 
         dim3 grid(nBlocksM, nBlocksN, 1);
         dim3 block(nThreads, nThreads, 1);
@@ -232,6 +234,7 @@ int main(int argc, char **argv)
         {
             printf("Error trans: %s\n", cudaGetErrorString(err));
         }
+        // C(N × M) ← A(N × P) · B (P × M)
         matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_weights, d_inputT, d_Z1);
         err = cudaGetLastError();
         if (err != cudaSuccess)
@@ -248,7 +251,7 @@ int main(int argc, char **argv)
         nBlocksN = (nOutput + nThreads - 1) / nThreads;
         nBlocksM = (batchSize + nThreads - 1) / nThreads;
         dim3 grid1(nBlocksM, nBlocksN, 1);
-
+        // C(N × M) ← A(N × P) · B (P × M)
         matMult<<<grid1, block>>>(nOutput, batchSize, nHiddenLayer, d_weightsOutput, d_activation, d_Z2);
         if (err != cudaSuccess)
         {
@@ -256,26 +259,22 @@ int main(int argc, char **argv)
         }
         globalSoftmaxPrimitive<<<batchSize, nOutput>>>(nOutput, batchSize, d_Z2, d_result);
         cudaMemcpy(h_result, d_result, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
-        for (int j = 0; j < nOutput; j++)
-        {
-            printf("result: %f\n", h_result[j]);
-        }
 
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error: %s\n", cudaGetErrorString(err));
         }
-         categoricalCrossEntropy<<<batchSize, nOutput>>>(nOutput, batchSize, d_labels, d_result, d_loss);
+        categoricalCrossEntropy<<<batchSize, nOutput>>>(nOutput, batchSize, d_labels, d_result, d_loss);
         if (err != cudaSuccess)
         {
             printf("Error sig: %s\n", cudaGetErrorString(err));
         }
-            cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
-            printf("in iteration %d, loss is %f\n", i, h_loss[0]);
+        cudaMemcpy(h_loss, d_loss, sizeof(float) * batchSize, cudaMemcpyDeviceToHost);
+        printf("in iteration %d, loss is %f\n", i, h_loss[0]);
 
         // backward
-        
+
         // derivative dZ2
         subtractMat<<<grid, block>>>(nOutput, batchSize, d_result, d_labels, d_dZ2);
 
@@ -286,20 +285,23 @@ int main(int argc, char **argv)
         }
         // derivative dW2
         transpose<<<64, 1024>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+
+      
+
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error transpose dW2: %s\n", cudaGetErrorString(err));
         }
-
-        matMult<<<grid, block>>>(nOutput, batchSize, nHiddenLayer, d_dZ2, d_activationT, d_dW2);
+        // C(N × M) ← A(N × P) · B (P × M)
+        matMult<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dZ2, d_activationT, d_dW2);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error matMult dW2: %s\n", cudaGetErrorString(err));
         }
 
-        scalarDivMat<<<grid, block>>>(nOutput, nHiddenLayer, batchSize, d_dW2, d_dW2);
+        scalarDivMat<<<grid, block>>>(nHiddenLayer, nOutput, batchSize, d_dW2, d_dW2);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -313,14 +315,15 @@ int main(int argc, char **argv)
             printf("Error derivative dZ1: %s\n", cudaGetErrorString(err));
         }
 
-        transpose<<<64, 1024>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+        transpose<<<64, 1024>>>(nHiddenLayer, nOutput, d_weightsOutput, d_weightsOutputT);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
             printf("Error transpose dZ1: %s\n", cudaGetErrorString(err));
         }
 
-        matMult<<<grid, block>>>(nHiddenLayer, nOutput,batchSize, d_weightsOutputT, d_dZ2, d_dZ1);
+        // C(N × M) ← A(N × P) · B (P × M)
+        matMult<<<grid, block>>>(nHiddenLayer, nOutput, batchSize, d_weightsOutputT, d_dZ2, d_dZ1);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -342,7 +345,8 @@ int main(int argc, char **argv)
         //     printf("Error transpose dW1: %s\n", cudaGetErrorString(err));
         // }
 
-        matMult<<<grid, block>>>(nHiddenLayer, batchSize, nFeatures, d_dZ1, d_inputT, d_dW1);
+        // C(N × M) ← A(N × P) · B (P × M)
+        matMult<<<grid, block>>>(nHiddenLayer, nFeatures, batchSize, d_dZ1, d_inputT, d_dW1);
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -356,8 +360,8 @@ int main(int argc, char **argv)
             printf("Error scalar division dW1: %s\n", cudaGetErrorString(err));
         }
 
-        //update
-        // w1 = new_w1
+        // update
+        //  w1 = new_w1
         scalarProdMat<<<grid, block>>>(nHiddenLayer, nFeatures, alpha, d_dW1, d_dW1_alpha);
         err = cudaGetLastError();
         if (err != cudaSuccess)
@@ -369,7 +373,6 @@ int main(int argc, char **argv)
 
         cudaMemcpy(h_weights, d_weights, sizeof(float) * nHiddenLayer * nFeatures, cudaMemcpyDeviceToHost);
         printf("in iteration %d, weights is %f\n", i, h_weights[0]);
-        
 
         err = cudaGetLastError();
         if (err != cudaSuccess)
@@ -385,8 +388,7 @@ int main(int argc, char **argv)
         }
 
         subtractMat<<<grid, block>>>(nHiddenLayer, nOutput, d_weightsOutput, d_dW2_alpha, d_weightsOutput);
-      
-        
+
         err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -396,18 +398,12 @@ int main(int argc, char **argv)
         // cudaMemcpy(h_Z2, d_Z2, sizeof(float) * nOutput * batchSize, cudaMemcpyDeviceToHost);
         // seqSoftmax(nOutput, batchSize, h_Z2, h_result);
         // cudaMemcpy(d_result, h_result, sizeof(float) * nOutput * batchSize, cudaMemcpyHostToDevice);
-        
 
-        //backward pass
+        // backward pass
 
-        //parameter update
-
-
-
-
-
+        // parameter update
     }
-    
+
     cudaEventRecord(E1, 0);
     cudaEventSynchronize(E1);
 
@@ -423,7 +419,7 @@ int main(int argc, char **argv)
     // Each matrix multiplication involves (nFeatures - 1) additions
 
     int numAdditionOps1 = nHiddenLayer * batchSize;
-    int numAdditionOps2 = batchSize * (nOutput + nOutput - 1 + nOutput) + 3*(batchSize * (nOutput - 1));
+    int numAdditionOps2 = batchSize * (nOutput + nOutput - 1 + nOutput) + 3 * (batchSize * (nOutput - 1));
 
     // Total floating-point operations
     int totalFloatingPointOps = iterations * (numMatrixMult1Ops + numMatrixMult2Ops + numAdditionOps1 + numAdditionOps2);
