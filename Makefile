@@ -21,6 +21,7 @@ EXE04			= reader.exe
 EXE05			= nn_main.exe
 EXE06			= dw1_test.exe
 EXE07			= seq_nn_impl.exe
+EXE08			= cuda_nn_impl.exe
 
 OBJ00	        = main.o nnfunctions.o utils.o
 OBJ01	        = test.o nnfunctions.o utils.o
@@ -30,6 +31,7 @@ OBJ04	        = reader.o
 OBJ05	        = nn_main.o primitives.o nnfunctions.o utils.o
 OBJ06	        = dw1_test.o primitives.o nnfunctions.o utils.o
 OBJ07	        = seq_nn_impl.o seq_primitives.o
+OBJ08	        = cuda_nn_impl.o primitives.o nnfunctions.o seq_primitives.o
 
 default: $(EXE00)
 
@@ -58,6 +60,9 @@ dw1_test.o: dw1_test.cu nnfunctions.h utils.h primitives.h
 
 seq_nn_impl.o: seq_nn_impl.cu seq_primitives.h
 	$(NVCC) -c -o $@ seq_nn_impl.cu $(NVCC_FLAGS) $(PROG_FLAGS)
+
+cuda_nn_impl.o: cuda_nn_impl.cu primitives.h nnfunctions.h seq_primitives.h
+	$(NVCC) -c -o $@ cuda_nn_impl.cu $(NVCC_FLAGS) $(PROG_FLAGS)
 
 
 seq_primitives.o: seq_primitives.cu seq_primitives.h
@@ -101,10 +106,13 @@ $(EXE06): $(OBJ06)
 $(EXE07): $(OBJ07)
 	$(NVCC) $(OBJ07) -o $(EXE07) $(LD_FLAGS)
 
+$(EXE08): $(OBJ08)
+	$(NVCC) $(OBJ08) -o $(EXE08) $(LD_FLAGS)
 
 
 
-all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) $(EXE05) $(EXE06) $(EXE07)
+
+all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) $(EXE05) $(EXE06) $(EXE07) $(EXE08)
 
 test:	$(EXE01)
 
@@ -118,5 +126,5 @@ forward_primitives:	$(EXE03)
 
 
 clean:
-	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe reader.exe nn_main.exe dw1_test.exe seq_nn_impl.exe
+	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe reader.exe nn_main.exe dw1_test.exe seq_nn_impl.exe cuda_nn_impl.exe
 

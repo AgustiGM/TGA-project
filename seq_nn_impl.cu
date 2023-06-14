@@ -170,7 +170,7 @@ int main(int argc, char **argv)
             seqMatMult(nHiddenLayer, batchSize, nFeatures, h_weights, h_inputT, h_Z1);
 
             // compute activation
-            seqSigmoid(nHiddenLayer, batchSize, h_Z1, h_activation);
+            seqReLu(nHiddenLayer, batchSize, h_Z1, h_activation);
 
             // compute Z2
             // C(N × M) ← A(N × P) · B (P × M)
@@ -203,6 +203,8 @@ int main(int argc, char **argv)
 
             // compute dZ2 (nOutputxbatchSize)
             seqSubstractMat(batchSize, nOutput, h_result, h_labelsT, h_dZ2);
+
+            // seqScalarProdMat(batchSize, nOutput, h_dZ2, 2.0, h_dZ2);
 
             // if (i == 0)
             // {
@@ -265,7 +267,7 @@ int main(int argc, char **argv)
             seqMatMult(nHiddenLayer, batchSize, nOutput, h_weightsOutputT, h_dZ2, h_dZ1);
 
             // compute derivative of z1
-            seqSigmoidDerivative(nHiddenLayer, batchSize, h_activation, h_dgZ1);
+            seqDerivativeReLu(nHiddenLayer, batchSize, h_Z1, h_dgZ1);
 
             // compute dZ1
 
