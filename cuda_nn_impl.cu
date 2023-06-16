@@ -124,6 +124,7 @@ int main(int argc, char **argv)
     float *d_resultT;
 
     float *d_dW1, *d_dW2;
+    srand(time(NULL));
 
     float *d_dZ2;
 
@@ -217,9 +218,9 @@ int main(int argc, char **argv)
             cudaMemcpy(d_labels, h_labels, batchSize * nOutput * sizeof(float), cudaMemcpyHostToDevice);
 
             //transpose labels
-            transpose<<<64,1024>>>(nOutput, batchSize, d_labels, d_labelsT);
+            transpose<<<64,1024>>>(batchSize, nOutput, d_labels, d_labelsT);
             
-            transpose<<<64,1024>>>(nFeatures, batchSize, d_input, d_inputT);
+            transpose<<<64,1024>>>(batchSize, nFeatures, d_input, d_inputT);
 
             // transpose input
             
@@ -284,7 +285,7 @@ int main(int argc, char **argv)
             //     printf("loss: %f; accuracy: %f\n", avg_loss, seqAcc);
 
             // compute dZ2 (nOutputxbatchSize) in device
-            subtractMat<<<64, 1024>>>(batchSize, nOutput, d_result, d_labelsT, d_dZ2);
+            subtractMat<<<64, 1024>>>(nOutput, batchSize, d_result, d_labelsT, d_dZ2);
 
             // print dZ2
 
@@ -335,7 +336,7 @@ int main(int argc, char **argv)
             dimGrid = dim3(nBlocksN, nBlocksM);
 
             // compute dw1
-            matMult<<<dimGrid, dimBlock>>>(nHiddenLayer, nFeatures, batchSize, d_dZ1, d_inputT, d_dW1);
+            matMult<<<dimGrid, dimBlock>>>(nHiddenLayer, nFeatures, batchSize, d_dZ1, d_input, d_dW1);
             
             // divide by batchsize in device
             scalarDivMat<<<64, 1024>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);

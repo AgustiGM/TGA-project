@@ -28,11 +28,13 @@ void seqMatMult(int n, int m, int p, float *A, float *B, float *C)
     {
         for (int j = 0; j < m; j++)
         {   
-            C[i * m + j] = 0.0f;
+            float sum = 0.0f;
             for (int k = 0; k < p; k++)
             {
-                C[i * m + j] += A[i * p + k] * B[k * m + j];
+                sum += A[i * p + k] * B[k * m + j];
             }
+            
+            C[i * m + j] = sum;
         }
     }
 }

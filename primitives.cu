@@ -119,9 +119,9 @@ __global__ void derivativeReLu(int N, int M, float *A, float *C){
 
     for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
         if (A[i] > 0) {
-            C[i] = 1;
+            C[i] = 1.0f;
         } else {
-            C[i] = 0;
+            C[i] = 0.0f;
         }
     }
     
