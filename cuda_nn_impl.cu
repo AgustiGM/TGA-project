@@ -53,7 +53,7 @@ float *readLabels(char *filename, int size, int nLabels)
     return fdata;
 }
 
-// sequential nn implementation
+// parallel nn implementation
 int main(int argc, char **argv)
 {
     int nFeatures, batchSize, nOutput, nHiddenLayer, training_size, testing_size, nEpochs;
@@ -111,6 +111,7 @@ int main(int argc, char **argv)
     float *h_dW1, *h_dW2;
 
     float *h_dZ2;
+    
 
     float *h_dZ1;
 
@@ -124,7 +125,7 @@ int main(int argc, char **argv)
     float *d_resultT;
 
     float *d_dW1, *d_dW2;
-    srand(time(NULL));
+    // srand(time(NULL));
 
     float *d_dZ2;
 
@@ -148,6 +149,7 @@ int main(int argc, char **argv)
 
     float *h_labelsT = (float *)malloc(batchSize * nOutput * sizeof(float));
 
+    
     h_inputT = (float *)malloc(nFeatures * batchSize * sizeof(float));
     h_weightsOutputT = (float *)malloc(nOutput * nHiddenLayer * sizeof(float));
     h_activationT = (float *)malloc(nHiddenLayer * batchSize * sizeof(float));
@@ -218,9 +220,9 @@ int main(int argc, char **argv)
             cudaMemcpy(d_labels, h_labels, batchSize * nOutput * sizeof(float), cudaMemcpyHostToDevice);
 
             //transpose labels
-            transpose<<<64,1024>>>(batchSize, nOutput, d_labels, d_labelsT);
+            transpose<<<batchSize,1>>>(batchSize, nOutput, d_labels, d_labelsT);
             
-            transpose<<<64,1024>>>(batchSize, nFeatures, d_input, d_inputT);
+            transpose<<<batchSize,1>>>(batchSize, nFeatures, d_input, d_inputT);
 
             // transpose input
             
@@ -229,12 +231,26 @@ int main(int argc, char **argv)
             int nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
             int nBlocksM = (batchSize + nThreads - 1) / nThreads;
 
-            dim3 dimGrid(nBlocksN, nBlocksM);
-            dim3 dimBlock(nThreads, nThreads);
+            dim3 dimGrid(nBlocksM, nBlocksN,1);
+            dim3 dimBlock(nThreads, nThreads,1);
 
             // compute Z1 in device
             // C(N × M) ← A(N × P) · B (P × M)
             matMult<<<dimGrid, dimBlock>>>(nHiddenLayer, batchSize, nFeatures, d_weights, d_inputT, d_Z1);
+
+            // copy dz1 to host
+             cudaMemcpy(h_Z1, d_Z1, nHiddenLayer * batchSize * sizeof(float), cudaMemcpyDeviceToHost);
+
+            //  if (i == 0 && epoch == 0) {
+            //     for (int j = 0; j < nHiddenLayer; j++)
+            //     {
+            //         for (int k = 0; k < batchSize; k++)
+            //         {
+            //             printf("%f ", h_Z1[j * batchSize + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            // }
             
 
             // compute activation in device
@@ -245,22 +261,51 @@ int main(int argc, char **argv)
             nBlocksN = (nOutput + nThreads - 1) / nThreads;
             nBlocksM = (batchSize + nThreads - 1) / nThreads;
 
-            dimGrid = dim3(nBlocksN, nBlocksM);
+            dimGrid = dim3(nBlocksM, nBlocksN,1);
 
 
             // compute Z2
             // C(N × M) ← A(N × P) · B (P × M)
             matMult<<<dimGrid, dimBlock>>>(nOutput, batchSize, nHiddenLayer, d_weightsOutput, d_activation, d_Z2);
 
+            cudaMemcpy(h_Z2, d_Z2, batchSize * nOutput * sizeof(float), cudaMemcpyDeviceToHost);
+
+            //print z2
+            // if (i == 0 && epoch == 0) {
+            //     for (int j = 0; j < nOutput; j++)
+            //     {
+            //         for (int k = 0; k < batchSize; k++)
+            //         {
+            //             printf("%f ", h_Z2[j * batchSize + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            // }
+
+            // transpose<<<512,1024>>>(nOutput, batchSize, d_Z2, d_resultT);
+
             // compute result
-            globalSoftmaxPrimitive<<<batchSize, 1024>>>(nOutput, batchSize, d_Z2, d_result);
+            globalSoftmaxPrimitive<<<batchSize, 1>>>(nOutput, batchSize, d_Z2, d_result);
             
-            // transpose result
-            transpose<<<64,1024>>>(nOutput, batchSize, d_result, d_resultT);
+            // // transpose result
+            // transpose<<<nOutput,1024>>>(nOutput, batchSize, d_result, d_resultT);
 
 
             // copy result to host for checking
             cudaMemcpy(h_result, d_result, batchSize * nOutput * sizeof(float), cudaMemcpyDeviceToHost);
+
+            // print h_result  
+            // if (i == 0 && epoch == 0)
+            // {
+            //     for (int j = 0; j < nOutput; j++)
+            //     {
+            //         for (int k = 0; k < batchSize; k++)
+            //         {
+            //             printf("%f ", h_result[j * batchSize + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            // }
             
             seqTranspose(nOutput, batchSize, h_result, h_resultT);
 
@@ -287,16 +332,21 @@ int main(int argc, char **argv)
             // compute dZ2 (nOutputxbatchSize) in device
             subtractMat<<<64, 1024>>>(nOutput, batchSize, d_result, d_labelsT, d_dZ2);
 
-            // print dZ2
+            cudaMemcpy(h_dZ2, d_dZ2, batchSize * nOutput * sizeof(float), cudaMemcpyDeviceToHost);
+
+            
+            // print h_dZ2
+
+           
 
             // transpose h_activation to batchSize x nHiddenLayer in device
-            transpose<<<64,1024>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+            transpose<<<nHiddenLayer,1024>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
 
             // compute nBlocksN and nBlocksM
             nBlocksN = (nOutput + nThreads - 1) / nThreads;
             nBlocksM = (nHiddenLayer + nThreads - 1) / nThreads;
 
-            dimGrid = dim3(nBlocksN, nBlocksM);
+            dimGrid = dim3(nBlocksM, nBlocksN,1);
             
             // compute dW2 in device
             // C(N × M) ← A(N × P) · B (P × M)
@@ -307,36 +357,149 @@ int main(int argc, char **argv)
 
             scalarDivMat<<<64, 1024>>>(nOutput, nHiddenLayer, batchSize, d_dW2, d_dW2);
 
+            // copy dW2 to host
+
+            // cudaMemcpy(h_dW2, d_dW2, nOutput * nHiddenLayer * sizeof(float), cudaMemcpyDeviceToHost);
+
+            // print h_dW2
+            
+            // if (i == nIterations/2 && epoch == 0)
+            // {
+            //     for (int j = 0; j < nOutput; j++)
+            //     {
+            //         for (int k = 0; k < nHiddenLayer; k++)
+            //         {
+            //             printf("%f ", h_dW2[j * nHiddenLayer + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            // }
+
             // transpose h_weightsOutput to nHiddenLayer x nOutput
 
-            transpose<<<64,1024>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+            transpose<<<nOutput,1024>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
             
             // compute nBlocksN and nBlocksM
             nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
             nBlocksM = (batchSize + nThreads - 1) / nThreads;
 
-            dimGrid = dim3(nBlocksN, nBlocksM);
+            dimGrid = dim3(nBlocksM, nBlocksN);
 
             // compute dZ1 in device
             // C(N × M) ← A(N × P) · B (P × M)
 
             matMult<<<dimGrid, dimBlock>>>(nHiddenLayer, batchSize, nOutput, d_weightsOutputT, d_dZ2, d_dZ1);
 
+            // // copy dZ1 to host
+
+            // cudaMemcpy(h_dZ1, d_dZ1, batchSize * nHiddenLayer * sizeof(float), cudaMemcpyDeviceToHost);
+
+            // // print h_dZ1
+
+            // if (i == 0 && epoch == 0) {
+            //     for (int j = 0; j < nHiddenLayer; j++)
+            //     {
+            //         for (int k = 0; k < batchSize; k++)
+            //         {
+            //             printf("%f ", h_dZ1[j * batchSize + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            //     printf("\n");
+            // }
+
+
+
             // compute derivative of z1 in device
-            derivativeReLu<<<64, 1024>>>(nHiddenLayer, batchSize, d_Z1, d_dgZ1);
+            derivativeReLu<<<nHiddenLayer, batchSize>>>(nHiddenLayer, batchSize, d_Z1, d_dgZ1);
+
+            // // copy d_dgZ1 to host
+
+            // cudaMemcpy(h_dgZ1, d_dgZ1, batchSize * nHiddenLayer * sizeof(float), cudaMemcpyDeviceToHost);
+
+            // // print h_dgZ1
+
+            // if (i == 0 && epoch == 0) {
+            //     for (int j = 0; j < nHiddenLayer; j++)
+            //     {
+            //         for (int k = 0; k < batchSize; k++)
+            //         {
+            //             printf("%f ", h_dgZ1[j * batchSize + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            //     printf("\n");
+            // }
 
 
             // compute dZ1 in device
-            elementWiseProd<<<64, 1024>>>(nHiddenLayer, batchSize, d_dZ1, d_dgZ1, d_dZ1);
+            elementWiseProd<<<nHiddenLayer, 1024>>>(nHiddenLayer, batchSize, d_dZ1, d_dgZ1, d_dZ1);
+
+            cudaMemcpy(h_dZ1, d_dZ1, batchSize * nHiddenLayer * sizeof(float), cudaMemcpyDeviceToHost);
+
+            // print h_dZ1
+
+            // if (i == 0 && epoch == 0)
+            // {
+            //     for (int j = 0; j < nHiddenLayer; j++)
+            //     {
+            //         for (int k = 0; k < batchSize; k++)
+            //         {
+            //             printf("%f ", h_dZ1[j * batchSize + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            // }
+
+ 
 
             // compute nBlocksN and nBlocksM
             nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
             nBlocksM = (nFeatures + nThreads - 1) / nThreads;
 
-            dimGrid = dim3(nBlocksN, nBlocksM);
+            // dimGrid = dim3(nBlocksN, nBlocksM);
 
+            dim3 dimGrid2(nBlocksM, nBlocksN);
+
+
+
+            
             // compute dw1
-            matMult<<<dimGrid, dimBlock>>>(nHiddenLayer, nFeatures, batchSize, d_dZ1, d_input, d_dW1);
+            // C(N × M) ← A(N × P) · B (P × M)
+            // printf("now\n");
+            matMult<<<dimGrid2, dimBlock>>>(nHiddenLayer, nFeatures, batchSize, d_dZ1, d_input, d_dW1);
+            // printf("stop\n");
+
+            // // print input
+            // if (i == 0 && epoch == 0)
+            // {
+            //     for (int j = 0; j < nFeatures; j++)
+            //     {
+            //         for (int k = 0; k < batchSize; k++)
+            //         {
+            //             printf("%f ", h_input[j * batchSize + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            // }
+
+            // copy dW1 to host for checking
+            cudaMemcpy(h_dW1, d_dW1, nHiddenLayer * nFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+
+            // print h_dW1
+
+            // if (i == 0 && epoch == 0) {
+            //     printf("dw1\n");
+            //     for (int j = 0; j < nHiddenLayer; j++)
+            //     {
+            //         for (int k = 0; k < nFeatures; k++)
+            //         {
+            //             if (h_dW1[j * nFeatures + k] != 0)
+            //                 printf("%f ", h_dW1[j * nFeatures + k]);
+            //         }
+            //         printf("\n");
+            //     }
+            // }
             
             // divide by batchsize in device
             scalarDivMat<<<64, 1024>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);

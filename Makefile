@@ -22,6 +22,7 @@ EXE05			= nn_main.exe
 EXE06			= dw1_test.exe
 EXE07			= seq_nn_impl.exe
 EXE08			= cuda_nn_impl.exe
+EXE09			= transpose_test.exe
 
 OBJ00	        = main.o nnfunctions.o utils.o
 OBJ01	        = test.o nnfunctions.o utils.o
@@ -32,6 +33,7 @@ OBJ05	        = nn_main.o primitives.o nnfunctions.o utils.o
 OBJ06	        = dw1_test.o primitives.o nnfunctions.o utils.o
 OBJ07	        = seq_nn_impl.o seq_primitives.o
 OBJ08	        = cuda_nn_impl.o primitives.o nnfunctions.o seq_primitives.o
+OBJ09	        = transpose_test.o primitives.o nnfunctions.o seq_primitives.o
 
 default: $(EXE00)
 
@@ -63,6 +65,9 @@ seq_nn_impl.o: seq_nn_impl.cu seq_primitives.h
 
 cuda_nn_impl.o: cuda_nn_impl.cu primitives.h nnfunctions.h seq_primitives.h
 	$(NVCC) -c -o $@ cuda_nn_impl.cu $(NVCC_FLAGS) $(PROG_FLAGS)
+
+transpose_test.o: transpose_test.cu primitives.h nnfunctions.h seq_primitives.h
+	$(NVCC) -c -o $@ transpose_test.cu $(NVCC_FLAGS) $(PROG_FLAGS)
 
 
 seq_primitives.o: seq_primitives.cu seq_primitives.h
@@ -109,10 +114,13 @@ $(EXE07): $(OBJ07)
 $(EXE08): $(OBJ08)
 	$(NVCC) $(OBJ08) -o $(EXE08) $(LD_FLAGS)
 
+$(EXE09): $(OBJ09)
+	$(NVCC) $(OBJ09) -o $(EXE09) $(LD_FLAGS)
 
 
 
-all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) $(EXE05) $(EXE06) $(EXE07) $(EXE08)
+
+all:	$(EXE00) $(EXE01) $(EXE02) $(EXE03) $(EXE05) $(EXE06) $(EXE07) $(EXE08) $(EXE09)
 
 test:	$(EXE01)
 
@@ -126,5 +134,5 @@ forward_primitives:	$(EXE03)
 
 
 clean:
-	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe reader.exe nn_main.exe dw1_test.exe seq_nn_impl.exe cuda_nn_impl.exe
+	rm -rf *.o main.exe test.exe forwardtest.exe forward_primitives.exe reader.exe nn_main.exe dw1_test.exe seq_nn_impl.exe cuda_nn_impl.exe transpose_test.exe
 

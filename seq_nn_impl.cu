@@ -168,21 +168,6 @@ int main(int argc, char **argv)
             // C(N × M) ← A(N × P) · B (P × M)
             seqMatMult(nHiddenLayer, batchSize, nFeatures, h_weights, h_inputT, h_Z1);
 
-            // print h_Z1
-            // if (i == 0 && epoch == 0)
-            // {
-            //     // printf nHiddenLayer and batchSize
-            //     printf("nHiddenLayer %d batchSize %d\n", nHiddenLayer, batchSize);
-            //     for (int j = 0; j < nHiddenLayer; j++)
-            //     {
-            //         for (int k = 0; k < batchSize; k++)
-            //         {   
-            //             printf("%f ", h_Z1[j * batchSize + k]);
-            //         }
-            //         printf("\n");
-            //     }
-            // }
-
             // compute activation
             seqReLu(nHiddenLayer, batchSize, h_Z1, h_activation);
 
@@ -218,64 +203,10 @@ int main(int argc, char **argv)
             // compute dZ2 (nOutputxbatchSize)
             seqSubstractMat(nOutput, batchSize, h_result, h_labelsT, h_dZ2);
 
-            // // print h result
-            // if (i == 0 && epoch == 0)
-            // {
-            //     for (int j = 0; j < nOutput; j++)
-            //     {
-            //         for (int k = 0; k < batchSize; k++)
-            //         {
-            //             printf("%f ", h_result[j * batchSize + k]);
-            //         }
-            //         printf("\n");
-            //     }
-            //     printf("\n");
-            // }
             
-
-            // // print h labels
-            // if (i == 0 && epoch == 0)
-            // {
-            //     for (int j = 0; j < nOutput; j++)
-            //     {
-            //         for (int k = 0; k < batchSize; k++)
-            //         {
-            //             printf("%f ", h_labelsT[j * batchSize + k]);
-            //         }
-            //         printf("\n");
-            //     }
-            //     printf("\n");
-            // }
-            
-
-            // // print dZ2
-            // if (i == 0 && epoch == 0)
-            // {
-            //     for (int j = 0; j < nOutput; j++)
-            //     {
-            //         for (int k = 0; k < batchSize; k++)
-            //         {
-            //             printf("%f ", h_dZ2[j * batchSize + k]);
-            //         }
-            //         printf("\n");
-            //     }
-            // }
-
             seqTranspose(nHiddenLayer, batchSize, h_activation, h_activationT);
 
-            //print h_activation
-            // if (i == 0 && epoch == 0) {
-            //     for (int j = 0; j < nHiddenLayer; j++)
-            //     {
-            //         for (int k = 0; k < batchSize; k++)
-            //         {
-            //             printf("%f ", h_activation[j * batchSize + k]);
-            //         }
-            //         printf("\n");
-            //     }
-            //     printf("\n");
-            // }
-
+        
             // compute dW2
             // C(N × M) ← A(N × P) · B (P × M)
             // h_dW2 nOutputxnHiddenLayer
@@ -295,17 +226,7 @@ int main(int argc, char **argv)
             // compute derivative of z1
             seqDerivativeReLu(nHiddenLayer, batchSize, h_Z1, h_dgZ1);
 
-            // if (i == 0 && epoch == 0)
-            // {
-            //     for (int j = 0; j < nHiddenLayer; ++j)
-            //     {
-            //         for (int k = 0; k < batchSize; ++k)
-            //         {
-            //             printf("%f ", h_dgZ1[j * batchSize + k]);
-            //         }
-            //         printf("\n");
-            //     }
-            // }
+            
 
             // compute dZ1
 
@@ -316,6 +237,20 @@ int main(int argc, char **argv)
             // compute dw1
             seqMatMult(nHiddenLayer, nFeatures, batchSize, h_dZ1, h_input, h_dW1);
 
+            // print non zeros of dw1
+
+            // if (i == 0 && epoch == 0)
+            // {
+            //     printf("dw1\n");
+            //     for (int j = 0; j < nHiddenLayer * nFeatures; j++)
+            //     {
+            //         if (h_dW1[j] != 0)
+            //         {
+            //             printf("%f\n", h_dW1[j]);
+            //         }
+            //     }
+            // }
+
             seqScalarDivMat(nHiddenLayer, nFeatures, h_dW1, batchSize, h_dW1);
 
             // print dw1
@@ -325,17 +260,6 @@ int main(int argc, char **argv)
             // compute dw1 * alpha
             seqScalarProdMat(nHiddenLayer, nFeatures, h_dW1, learning_rate, h_dW1);
 
-            //     if (i == 2 && epoch == 0)
-            // {
-            //     for (int j = 0; j < nOutput; j++)
-            //     {
-            //         for (int k = 0; k < nHiddenLayer; k++)
-            //         {
-            //             printf("%f ", h_dW2[j * nHiddenLayer + k]);
-            //         }
-            //         printf("\n");
-            //     }
-            // }
 
             seqSubstractMat(nHiddenLayer, nFeatures, h_weights, h_dW1, h_weights);
 
