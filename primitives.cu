@@ -9,7 +9,7 @@ __global__ void matMult(int N, int M, int P, float *A, float *B, float *C)
 
     __shared__ float sA[SIZE][SIZE];
     __shared__ float sB[SIZE][SIZE];
-
+    
     int bx = blockIdx.x;
     int by = blockIdx.y;
     int tx = threadIdx.x;
@@ -40,6 +40,9 @@ __global__ void matMult(int N, int M, int P, float *A, float *B, float *C)
     for (k = 0; m < P; k++, m++)
         tmp += sA[ty][k] * sB[k][tx];
 
+    // if (row < N && col < M && tmp != 0)
+    //     printf("row: %d, col: %d, tmp: %f\n", row, col, tmp);
+
     if (row < N && col < M)
         C[row * M + col] = tmp;
 }
@@ -55,26 +58,74 @@ __global__ void transpose(int N, int M, float *input, float *output)
             output[j * N + i] = input[i * M + j];
         }
     }
+    
 }
 
 __global__ void globalSoftmaxPrimitive(int nOutput, int batchSize, float *input, float *output) {
-    int tid = threadIdx.x;
-    int bx = blockIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (bx < batchSize) {
-        float max = input[bx * nOutput];
+    if (tid < batchSize) {
+        // each column is the result for an input
+        float max = input[tid];
         for (int i = 1; i < nOutput; i++) {
-            if (input[bx * nOutput + i] > max) {
-                max = input[bx * nOutput + i];
+            if (input[i * batchSize + tid] > max) {
+                max = input[i * batchSize + tid];
             }
         }
         float sum = 0.0;
         for (int i = 0; i < nOutput; i++) {
-            sum += expf(input[bx * nOutput + i] - max);
+            sum += expf(input[i * batchSize + tid] - max);
         }
         for (int i = 0; i < nOutput; i++) {
-            output[bx * nOutput + i] = expf(input[bx * nOutput + i] - max) / sum;
+            output[i * batchSize + tid] = expf(input[i * batchSize + tid] - max) / sum;
         }
     }
 
+}
+
+__global__ void elementWiseProd(int N, int M, float *A, float *B, float *C) {
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] * B[i];
+    }
+}
+
+__global__ void subtractMat(int N, int M, float *A, float *B, float *C) {
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] - B[i];
+    }
+}
+
+__global__ void scalarDivMat(int N, int M, float value, float *A, float *C) {
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] / value;
+    }
+}
+
+__global__ void scalarProdMat(int N, int M, float value, float *A, float *C) {
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        C[i] = A[i] * value;
+    }
+}
+
+
+__global__ void derivativeReLu(int N, int M, float *A, float *C){
+
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+
+    for (int i = tid; i < N * M; i += blockDim.x * gridDim.x) {
+        if (A[i] > 0) {
+            C[i] = 1.0f;
+        } else {
+            C[i] = 0.0f;
+        }
+    }
+    
 }

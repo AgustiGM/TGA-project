@@ -64,7 +64,7 @@ __global__ void sigmoid(int N, float *input, float *output)
   }
 }
 
-__device__ void reLU(int N, float *input, float *output)
+__global__ void reLU(int N, float *input, float *output)
 {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   for (int i = tid; i < N; i += blockDim.x * gridDim.x)
@@ -82,7 +82,18 @@ __device__ void reLU(int N, float *input, float *output)
 
 __global__ void globalReLU(int N, float *input, float *output)
 {
-  reLU(N, input, output);
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = tid; i < N; i += blockDim.x * gridDim.x)
+  {
+    if (input[i] > 0)
+    {
+      output[i] = input[i];
+    }
+    else
+    {
+      output[i] = 0;
+    }
+  }
 }
 
 __global__ void backprop(int N, float *A)
@@ -236,9 +247,12 @@ __global__ void categoricalCrossEntropy(int nOutput, int batchSize, float *groun
 
     for (int c = 0; c < nOutput; c++)
     {
-      example_loss -= groundTruth[tid * nOutput + c] * log(predictions[tid * nOutput + c]);
+      if (groundTruth[tid * nOutput + c] == 1.0f) {
+        example_loss -= log(predictions[tid * nOutput + c] == 0 ? 1e-10 : predictions[tid * nOutput + c]);
+      }
+      // example_loss -= groundTruth[tid * nOutput + c] * log(predictions[tid * nOutput + c] == 0 ? 1e-10 : predictions[tid * nOutput + c]);
     }
-
+    
     loss[tid] = example_loss;
   }
 }

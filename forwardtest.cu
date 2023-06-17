@@ -224,9 +224,6 @@ int main()
         ls_d += h_loss[i];
     }
 
-
-
-
     // backpropagation<<<batchSize, nOutput>>>(nFeatures, batchSize, nHiddenLayer, nOutput,
     //                                         d_Z1, d_activation, d_Z2, d_result, d_weightsOutput,
     //                                         d_input, d_labels,
