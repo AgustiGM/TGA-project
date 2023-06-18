@@ -146,14 +146,9 @@ float seqAccuracy(int batchSize, int nOutput, float *h_result, float *h_labels) 
         int maxIdx = seqMaxIdx(nOutput, &h_result[i * nOutput]);
         if (h_labels[i * nOutput + maxIdx] != 0.0f)
         {
-            // printf("In example %d, the network predicted %d, which is correct\n", i, maxIdx);
-            // printf("h_result: %f\n, h_labels: %f\n", h_result[i * nOutput + maxIdx], h_labels[i * nOutput + maxIdx]);
-            // printf("maxIdx: %d\n", maxIdx);
             correct++;
         }
     }
-    // printf("Correct: %d\n", correct);
-    // printf("Batch size: %d\n", batchSize);
     return (float)correct / (float)batchSize;
 }
 

@@ -147,6 +147,11 @@ int main(int argc, char **argv)
         h_weightsOutput[i] = -1.0 + 2.0 * (float)rand() / (float)RAND_MAX;
     }
 
+    //get time
+
+    clock_t start, end;
+    start = clock();
+
     // compute number of iterations
     int nIterations = training_size / batchSize;
     for (int epoch = 0; epoch < nEpochs; ++epoch)
@@ -188,6 +193,8 @@ int main(int argc, char **argv)
 
             float seqAcc = seqAccuracy(batchSize, nOutput, h_resultT, h_labels);
             e_accuracy += seqAcc;
+            if (i == 0)
+                printf("accuracy: %f\n", seqAcc);
 
             float avg_loss = 0.0;
             for (int j = 0; j < batchSize * nOutput; j++)
@@ -272,6 +279,36 @@ int main(int argc, char **argv)
         printf("eaccuracy %f\n", e_accuracy);
         printf("epoch %d accuracy %f\n", epoch, e_accuracy / nIterations);
     }
+
+    end = clock();
+    double time_taken = ((double)(end - start)) / CLOCKS_PER_SEC; // in seconds
+double gflop = (2 * nHiddenLayer * batchSize * nFeatures +
+            nHiddenLayer*batchSize +
+             2 * nOutput * batchSize * nHiddenLayer +
+             batchSize * nOutput +
+             nOutput * batchSize +
+             2 * nOutput * nHiddenLayer * batchSize +
+             nOutput * nHiddenLayer * batchSize +
+            2 * nHiddenLayer * batchSize * nOutput +
+             nHiddenLayer * batchSize +
+             nHiddenLayer * batchSize +
+             2 * nHiddenLayer * nFeatures * batchSize+
+             nHiddenLayer * nFeatures  +
+             nHiddenLayer * nFeatures * batchSize +
+             nHiddenLayer * nFeatures +
+             nOutput * nHiddenLayer +
+             nOutput * nHiddenLayer
+
+             );
+
+    printf("GFLOP: %f\n", gflop);
+    gflop /= 1e9;
+
+    //print time and gflops
+
+    printf("Time taken by program is : %f sec\n", time_taken);
+    printf("GFLOPS: %f\n", gflop / (time_taken /(nIterations * nEpochs )));
+
 
     // free memory
     free(h_input);
