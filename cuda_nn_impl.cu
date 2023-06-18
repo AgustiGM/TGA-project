@@ -17,12 +17,11 @@ float *readImageData(char *filename, int size)
     int n = read(fd, buf, 16);
 
     unsigned char *data = (unsigned char *)malloc(size);
-    n = read(fd, data, size*sizeof(unsigned char));
+    n = read(fd, data, size * sizeof(unsigned char));
     float *fdata = (float *)malloc(size * sizeof(float));
     for (int i = 0; i < size; i++)
     {
-        fdata[i] = (float) (data[i]) / 255.0f;
-        
+        fdata[i] = (float)(data[i]) / 255.0f;
     }
     free(data);
     close(fd);
@@ -58,7 +57,7 @@ int main(int argc, char **argv)
 {
     int nFeatures, batchSize, nOutput, nHiddenLayer, training_size, testing_size, nEpochs;
     float learning_rate;
-    int nThreads =32;
+    int nThreads = 32;
     char *filename_train, *train_labels, *filename_test;
     // todo parse arguments
     if (argc != 12)
@@ -77,7 +76,7 @@ int main(int argc, char **argv)
     filename_train = argv[9];
     train_labels = argv[10];
     filename_test = argv[11];
-
+    printf("Data read\n");
     // read input
     float *training_input, *training_labels, *testing_input, *testing_labels;
     training_input = readImageData(filename_train, training_size * nFeatures);
@@ -111,7 +110,6 @@ int main(int argc, char **argv)
     float *h_dW1, *h_dW2;
 
     float *h_dZ2;
-    
 
     float *h_dZ1;
 
@@ -137,8 +135,6 @@ int main(int argc, char **argv)
 
     float *d_accuracy;
 
-    
-
     // allocate memory
 
     h_input = (float *)malloc(batchSize * nFeatures * sizeof(float));
@@ -153,7 +149,6 @@ int main(int argc, char **argv)
 
     float *h_labelsT = (float *)malloc(batchSize * nOutput * sizeof(float));
 
-    
     h_inputT = (float *)malloc(nFeatures * batchSize * sizeof(float));
     h_weightsOutputT = (float *)malloc(nOutput * nHiddenLayer * sizeof(float));
     h_activationT = (float *)malloc(nHiddenLayer * batchSize * sizeof(float));
@@ -166,8 +161,8 @@ int main(int argc, char **argv)
     h_dgZ1 = (float *)malloc(batchSize * nHiddenLayer * sizeof(float));
 
     float *h_accuracy = (float *)malloc(sizeof(float));
-    
 
+    printf("Memory allocated in host\n");
     // allocate memory in device
 
     cudaMalloc((void **)&d_input, batchSize * nFeatures * sizeof(float));
@@ -195,6 +190,7 @@ int main(int argc, char **argv)
 
     cudaMalloc((void **)&d_accuracy, sizeof(float));
 
+    printf("Memory allocated\n");
     // initialize weights
     for (int i = 0; i < nFeatures * nHiddenLayer; i++)
     {
@@ -204,14 +200,12 @@ int main(int argc, char **argv)
     {
         h_weightsOutput[i] = -1.0 + 2.0 * (float)rand() / (float)RAND_MAX;
     }
-
+    printf("Weights initialized\n");
     // copy weights to device
     cudaMemcpy(d_weights, h_weights, nFeatures * nHiddenLayer * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_weightsOutput, h_weightsOutput, nHiddenLayer * nOutput * sizeof(float), cudaMemcpyHostToDevice);
 
-    
-
-    //create cuda events
+    // create cuda events
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -219,9 +213,8 @@ int main(int argc, char **argv)
     cudaEventRecord(start, 0);
     cudaEventSynchronize(start);
 
-    
-    float * d_training_input;
-    float * d_training_labels;
+    float *d_training_input;
+    float *d_training_labels;
 
     cudaMalloc((void **)&d_training_input, training_size * nFeatures * sizeof(float));
     cudaMalloc((void **)&d_training_labels, training_size * nOutput * sizeof(float));
@@ -229,6 +222,7 @@ int main(int argc, char **argv)
     cudaMemcpy(d_training_input, training_input, training_size * nFeatures * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_training_labels, training_labels, training_size * nOutput * sizeof(float), cudaMemcpyHostToDevice);
 
+    printf("Training data copied to device\n");
     // compute number of iterations
     int nIterations = training_size / batchSize;
     for (int epoch = 0; epoch < nEpochs; ++epoch)
@@ -248,55 +242,47 @@ int main(int argc, char **argv)
             // cudaMemcpy(d_input, training_input + i * batchSize * nFeatures, batchSize * nFeatures * sizeof(float), cudaMemcpyHostToDevice);
             // cudaMemcpy(d_labels, training_labels + i * batchSize * nOutput, batchSize * nOutput * sizeof(float), cudaMemcpyHostToDevice);
 
-            //transpose labels
-            
-            transpose<<<batchSize,1>>>(batchSize, nOutput, d_labels, d_labelsT);
-            
-            transpose<<<batchSize,1>>>(batchSize, nFeatures, d_input, d_inputT);
+            // transpose labels
 
-         
+            transpose<<<batchSize, 1>>>(batchSize, nOutput, d_labels, d_labelsT);
+
+            transpose<<<batchSize, 1>>>(batchSize, nFeatures, d_input, d_inputT);
 
             // transpose input
-            
 
             // define nBlocksN and nBlocksM
             int nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
             int nBlocksM = (batchSize + nThreads - 1) / nThreads;
 
-            dim3 dimGrid(nBlocksM, nBlocksN,1);
-            dim3 dimBlock(nThreads, nThreads,1);
+            dim3 dimGrid(nBlocksM, nBlocksN, 1);
+            dim3 dimBlock(nThreads, nThreads, 1);
 
             // compute Z1 in device
             // C(N × M) ← A(N × P) · B (P × M)
             matMult<<<dimGrid, dimBlock>>>(nHiddenLayer, batchSize, nFeatures, d_weights, d_inputT, d_Z1);
 
             // compute activation in device
-            reLU<<<64, 1024>>>(nHiddenLayer* batchSize, d_Z1, d_activation);
-            
+            reLU<<<64, 1024>>>(nHiddenLayer * batchSize, d_Z1, d_activation);
 
             // define nBlocksN and nBlocksM
             nBlocksN = (nOutput + nThreads - 1) / nThreads;
             nBlocksM = (batchSize + nThreads - 1) / nThreads;
 
-            dimGrid = dim3(nBlocksM, nBlocksN,1);
-
+            dimGrid = dim3(nBlocksM, nBlocksN, 1);
 
             // C(N × M) ← A(N × P) · B (P × M)
             matMult<<<dimGrid, dimBlock>>>(nOutput, batchSize, nHiddenLayer, d_weightsOutput, d_activation, d_Z2);
 
-
-
-
             // compute result
             globalSoftmaxPrimitive<<<batchSize, 1>>>(nOutput, batchSize, d_Z2, d_result);
 
+            transpose<<<nOutput, 1024>>>(nOutput, batchSize, d_result, d_resultT);
 
-            transpose<<<32,1024>>>(nOutput, batchSize, d_result, d_resultT);
-
-            accuracy<<<32,1024>>>(batchSize, nOutput, d_resultT, d_labels, d_accuracy);
-
+            accuracy<<<32, 1024>>>(batchSize, nOutput, d_resultT, d_labels, d_accuracy);
 
             cudaMemcpy(h_accuracy, d_accuracy, sizeof(float), cudaMemcpyDeviceToHost);
+            if (i == 0)
+                printf("accuracy %f\n", *h_accuracy);
             e_accuracy += *h_accuracy;
 
             // if (i == 0){
@@ -306,12 +292,12 @@ int main(int argc, char **argv)
             //     printf("\n ");
             //     }
 
-            float avg_loss = 0.0;
-            for (int j = 0; j < batchSize * nOutput; j++)
-            {
-                avg_loss += h_loss[j];
-            }
-            avg_loss /= batchSize * nOutput;
+            // float avg_loss = 0.0;
+            // for (int j = 0; j < batchSize * nOutput; j++)
+            // {
+            //     avg_loss += h_loss[j];
+            // }
+            // avg_loss /= batchSize * nOutput;
 
             // compute gradients
 
@@ -319,14 +305,14 @@ int main(int argc, char **argv)
             subtractMat<<<64, 1024>>>(nOutput, batchSize, d_result, d_labelsT, d_dZ2);
 
             // transpose h_activation to batchSize x nHiddenLayer in device
-            transpose<<<nHiddenLayer,1024>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
+            transpose<<<nHiddenLayer, 1024>>>(nHiddenLayer, batchSize, d_activation, d_activationT);
 
             // compute nBlocksN and nBlocksM
             nBlocksN = (nOutput + nThreads - 1) / nThreads;
             nBlocksM = (nHiddenLayer + nThreads - 1) / nThreads;
 
-            dimGrid = dim3(nBlocksM, nBlocksN,1);
-            
+            dimGrid = dim3(nBlocksM, nBlocksN, 1);
+
             // compute dW2 in device
             // C(N × M) ← A(N × P) · B (P × M)
             // h_dW2 nOutputxnHiddenLayer
@@ -336,8 +322,8 @@ int main(int argc, char **argv)
 
             scalarDivMat<<<64, 1024>>>(nOutput, nHiddenLayer, batchSize, d_dW2, d_dW2);
 
-            transpose<<<nOutput,1024>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
-            
+            transpose<<<nOutput, 1024>>>(nOutput, nHiddenLayer, d_weightsOutput, d_weightsOutputT);
+
             // compute nBlocksN and nBlocksM
             nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
             nBlocksM = (batchSize + nThreads - 1) / nThreads;
@@ -352,7 +338,6 @@ int main(int argc, char **argv)
             // compute derivative of z1 in device
             derivativeReLu<<<nHiddenLayer, batchSize>>>(nHiddenLayer, batchSize, d_Z1, d_dgZ1);
 
-
             // compute dZ1 in device
             elementWiseProd<<<nHiddenLayer, 1024>>>(nHiddenLayer, batchSize, d_dZ1, d_dgZ1, d_dZ1);
 
@@ -363,17 +348,13 @@ int main(int argc, char **argv)
             // dimGrid = dim3(nBlocksN, nBlocksM);
 
             dim3 dimGrid2(nBlocksM, nBlocksN);
-            
 
-
-            
             // compute dw1
             // C(N × M) ← A(N × P) · B (P × M)
             // printf("now\n");
             matMult<<<dimGrid2, dimBlock>>>(nHiddenLayer, nFeatures, batchSize, d_dZ1, d_input, d_dW1);
             // printf("stop\n");
 
-            
             // divide by batchsize in device
             scalarDivMat<<<64, 1024>>>(nHiddenLayer, nFeatures, batchSize, d_dW1, d_dW1);
 
@@ -381,61 +362,57 @@ int main(int argc, char **argv)
 
             // compute dw1 * alpha in device
             scalarProdMat<<<64, 1024>>>(nHiddenLayer, nFeatures, learning_rate, d_dW1, d_dW1);
-            
+
             // perform the substraction in the device
             subtractMat<<<64, 1024>>>(nHiddenLayer, nFeatures, d_weights, d_dW1, d_weights);
 
-            
             // compute dw2 * alpha in device
             scalarProdMat<<<64, 1024>>>(nOutput, nHiddenLayer, learning_rate, d_dW2, d_dW2);
-            
+
             // perform the substraction in the device
             subtractMat<<<64, 1024>>>(nOutput, nHiddenLayer, d_weightsOutput, d_dW2, d_weightsOutput);
-            
-            //error checking
-               cudaError_t err = cudaGetLastError();
+
+            // error checking
+            cudaError_t err = cudaGetLastError();
             if (err != cudaSuccess)
             {
                 printf("Error: %s\n", cudaGetErrorString(err));
                 exit(-1);
             }
-            
-
         }
         printf("nIterations %d\n", nIterations);
         printf("eaccuracy %f\n", e_accuracy);
         printf("epoch %d accuracy %f\n", epoch, e_accuracy / nIterations);
     }
 
-    //get last event
+    // get last event
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
 
-    //calculate time
+    // calculate time
     float elapsedTime;
     cudaEventElapsedTime(&elapsedTime, start, stop);
 
-    //synch events
-
+    // synch events
 
     double gflop = (2 * nHiddenLayer * batchSize * nFeatures +
-            nHiddenLayer*batchSize +
-             2 * nOutput * batchSize * nHiddenLayer +
-             batchSize * nOutput +
-             nOutput * batchSize +
-             2 * nOutput * nHiddenLayer * batchSize +
-             nOutput * nHiddenLayer * batchSize +
-            2 * nHiddenLayer * batchSize * nOutput +
-             nHiddenLayer * batchSize +
-             nHiddenLayer * batchSize +
-             2 * nHiddenLayer * nFeatures * batchSize+
-             nHiddenLayer * nFeatures  +
-             nHiddenLayer * nFeatures * batchSize +
-             nHiddenLayer * nFeatures +
-             nOutput * nHiddenLayer +
-             nOutput * nHiddenLayer
+                    nHiddenLayer * batchSize +
+                    2 * nOutput * batchSize * nHiddenLayer +
+                    batchSize * nOutput +
+                    nOutput * batchSize +
+                    2 * nOutput * nHiddenLayer * batchSize +
+                    nOutput * nHiddenLayer * batchSize +
+                    2 * nHiddenLayer * batchSize * nOutput +
+                    nHiddenLayer * batchSize +
+                    nHiddenLayer * batchSize +
+                    2 * nHiddenLayer * nFeatures * batchSize +
+                    nHiddenLayer * nFeatures +
+                    nHiddenLayer * nFeatures * batchSize +
+                    nHiddenLayer * nFeatures +
+                    nOutput * nHiddenLayer +
+                    nOutput * nHiddenLayer
 
-             );
+    );
 
     printf("GFLOP: %f\n", gflop);
     gflop /= 1e9;
@@ -444,10 +421,10 @@ int main(int argc, char **argv)
 
     printf("GFLOP: %f\n", gflop);
 
-    printf("Elapsed time : %f s\n", elapsedTime/1000);
-    
-    //print gflops
-    printf("GFLOP/s: %f\n", gflop / (elapsedTime / (nIterations * nEpochs *1000.0)));
+    printf("Elapsed time : %f s\n", elapsedTime / 1000);
+
+    // print gflops
+    printf("GFLOP/s: %f\n", gflop / (elapsedTime / (nIterations * nEpochs * 1000.0)));
 
     // free memory
     free(h_input);
@@ -471,7 +448,7 @@ int main(int argc, char **argv)
     free(training_labels);
     free(h_resultT);
 
-    //free device memory
+    // free device memory
     cudaFree(d_input);
     cudaFree(d_inputT);
     cudaFree(d_labels);
@@ -491,7 +468,6 @@ int main(int argc, char **argv)
     cudaFree(d_dZ1);
     cudaFree(d_dgZ1);
     cudaFree(d_dW1);
-
 
     return 0;
 }
