@@ -132,7 +132,8 @@ __global__ void derivativeReLu(int N, int M, float *A, float *C){
 
 __global__ void accuracy(int batchSize, int nOutput, float *predictions, float *labels, float *d_accuracy) {
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
-    *d_accuracy = 0.0f;
+    if (tid < 1)
+        *d_accuracy = 0.0f;
     for (int i = tid; i < batchSize; i += blockDim.x * gridDim.x) {
         // find the max idx
         int maxIdx = 0;
@@ -148,7 +149,7 @@ __global__ void accuracy(int batchSize, int nOutput, float *predictions, float *
         }
     }
     __syncthreads();
-    if (tid == 0){
+    if (tid < 1){
         // printf("accuracy: %f\n", *d_accuracy);
         *d_accuracy /= (float)batchSize;
     }
