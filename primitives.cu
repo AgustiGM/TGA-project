@@ -62,9 +62,9 @@ __global__ void transpose(int N, int M, float *input, float *output)
 }
 
 __global__ void globalSoftmaxPrimitive(int nOutput, int batchSize, float *input, float *output) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int td = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (tid < batchSize) {
+    for (int tid = td; tid < batchSize; tid += blockDim.x * gridDim.x) {
         // each column is the result for an input
         float max = input[tid];
         for (int i = 1; i < nOutput; i++) {
@@ -132,9 +132,9 @@ __global__ void derivativeReLu(int N, int M, float *A, float *C){
 
 __global__ void accuracy(int batchSize, int nOutput, float *predictions, float *labels, float *d_accuracy) {
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
-    if (tid < 1)
-        *d_accuracy = 0.0f;
+    
     for (int i = tid; i < batchSize; i += blockDim.x * gridDim.x) {
+        d_accuracy[i] = 0.0f;
         // find the max idx
         int maxIdx = 0;
         float max = predictions[i*nOutput];
@@ -145,12 +145,8 @@ __global__ void accuracy(int batchSize, int nOutput, float *predictions, float *
             }
         }
         if (labels[i * nOutput + maxIdx] != 0.0f) {
-            atomicAdd(d_accuracy, 1.0f);
+            d_accuracy[i] = 1.0f;
         }
     }
-    __syncthreads();
-    if (tid < 1){
-        // printf("accuracy: %f\n", *d_accuracy);
-        *d_accuracy /= (float)batchSize;
-    }
+    
 }

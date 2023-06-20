@@ -55,14 +55,14 @@ float *readLabels(char *filename, int size, int nLabels)
 // parallel nn implementation
 int main(int argc, char **argv)
 {
-    int nFeatures, batchSize, nOutput, nHiddenLayer, training_size, testing_size, nEpochs;
+    int nFeatures, batchSize, nOutput, nHiddenLayer, training_size, test_size, nEpochs;
     float learning_rate;
     int nThreads = 32;
-    char *filename_train, *train_labels, *filename_test;
+    char *filename_train, *train_labels, *filename_test, *test_labels;
     // todo parse arguments
-    if (argc != 12)
+    if (argc != 13)
     {
-        printf("Usage: ./nn <nFeatures> <batchSize> <nOutput> <nHiddenLayer> <learning_rate> <training_size> <testing_size> <nEpochs> <filename_train> <train_labels> <filename_test>\n");
+        printf("Usage: ./nn <nFeatures> <batchSize> <nOutput> <nHiddenLayer> <learning_rate> <training_size> <testing_size> <nEpochs> <filename_train> <train_labels> <filename_test> <test_labels>\n");
         exit(1);
     }
     nFeatures = atoi(argv[1]);
@@ -71,34 +71,18 @@ int main(int argc, char **argv)
     nHiddenLayer = atoi(argv[4]);
     learning_rate = atof(argv[5]);
     training_size = atoi(argv[6]);
-    testing_size = atoi(argv[7]);
+    test_size = atoi(argv[7]);
     nEpochs = atoi(argv[8]);
     filename_train = argv[9];
     train_labels = argv[10];
     filename_test = argv[11];
+    test_labels = argv[12];
+
     printf("Data read\n");
     // read input
     float *training_input, *training_labels, *testing_input, *testing_labels;
     training_input = readImageData(filename_train, training_size * nFeatures);
     training_labels = readLabels(train_labels, training_size, nOutput);
-
-    // for (int i = 0; i < 28; i++)
-    // {
-    //     for (int j = 0; j < 28; j++)
-    //     {
-    //         printf("%d ", (int) (training_input[i*28  + j] * 255.0f));
-    //     }
-    //     printf("\n");
-    // }
-
-    // for (int i = 0; i < 4; i++)
-    // {
-    //     for (int j = 0; j < nOutput; j++)
-    //     {
-    //         printf("%f ", training_labels[i * nOutput + j]);
-    //     }
-    //     printf("\n");
-    // }
 
     // define variables to hold weights
 
@@ -135,6 +119,10 @@ int main(int argc, char **argv)
 
     float *d_accuracy;
 
+    float *d_test, *d_testLabels;
+
+    float *d_testT;
+
     // allocate memory
 
     h_input = (float *)malloc(batchSize * nFeatures * sizeof(float));
@@ -160,7 +148,7 @@ int main(int argc, char **argv)
     h_dZ1 = (float *)malloc(batchSize * nHiddenLayer * sizeof(float));
     h_dgZ1 = (float *)malloc(batchSize * nHiddenLayer * sizeof(float));
 
-    float *h_accuracy = (float *)malloc(sizeof(float));
+    float *h_accuracy = (float *)malloc(sizeof(float)*batchSize);
 
     printf("Memory allocated in host\n");
     // allocate memory in device
@@ -188,7 +176,7 @@ int main(int argc, char **argv)
     cudaMalloc((void **)&d_dZ1, batchSize * nHiddenLayer * sizeof(float));
     cudaMalloc((void **)&d_dgZ1, batchSize * nHiddenLayer * sizeof(float));
 
-    cudaMalloc((void **)&d_accuracy, sizeof(float));
+    cudaMalloc((void **)&d_accuracy, batchSize * sizeof(float));
 
     printf("Memory allocated\n");
     // initialize weights
@@ -229,7 +217,6 @@ int main(int argc, char **argv)
     {
         printf("Epoch %d\n", epoch);
         float e_accuracy = 0.0f;
-        printf("eaccuracy %f\n", e_accuracy);
 
         for (int i = 0; i < nIterations; ++i)
         {
@@ -246,7 +233,7 @@ int main(int argc, char **argv)
 
             transpose<<<batchSize, 1>>>(batchSize, nOutput, d_labels, d_labelsT);
 
-            transpose<<<batchSize, 1>>>(batchSize, nFeatures, d_input, d_inputT);
+            transpose<<<32, 1024>>>(batchSize, nFeatures, d_input, d_inputT);
 
             // transpose input
 
@@ -274,30 +261,18 @@ int main(int argc, char **argv)
             matMult<<<dimGrid, dimBlock>>>(nOutput, batchSize, nHiddenLayer, d_weightsOutput, d_activation, d_Z2);
 
             // compute result
-            globalSoftmaxPrimitive<<<batchSize, 1>>>(nOutput, batchSize, d_Z2, d_result);
+            globalSoftmaxPrimitive<<<32, 1024>>>(nOutput, batchSize, d_Z2, d_result);
 
             transpose<<<nOutput, 1024>>>(nOutput, batchSize, d_result, d_resultT);
 
             accuracy<<<32, 1024>>>(batchSize, nOutput, d_resultT, d_labels, d_accuracy);
 
-            cudaMemcpy(h_accuracy, d_accuracy, sizeof(float), cudaMemcpyDeviceToHost);
-            if (i == 0)
-                printf("accuracy %f\n", *h_accuracy);
-            e_accuracy += *h_accuracy;
-
-            // if (i == 0){
-            //     printf("in epoch %d\n", epoch);
-            //     printf("accuracy %f\n", *h_accuracy);
-            //     // printf("seq accuracy %f\n", seqAcc);
-            //     printf("\n ");
-            //     }
-
-            // float avg_loss = 0.0;
-            // for (int j = 0; j < batchSize * nOutput; j++)
-            // {
-            //     avg_loss += h_loss[j];
-            // }
-            // avg_loss /= batchSize * nOutput;
+            cudaMemcpy(h_accuracy, d_accuracy, sizeof(float)*batchSize, cudaMemcpyDeviceToHost);
+            float batch_acc = 0.0f;
+            for (int j = 0; j < batchSize; ++j) {
+                batch_acc += h_accuracy[j];
+            }
+            e_accuracy += batch_acc/batchSize;
 
             // compute gradients
 
@@ -426,6 +401,118 @@ int main(int argc, char **argv)
     // print gflops
     printf("GFLOP/s: %f\n", gflop / (elapsedTime / (nIterations * nEpochs * 1000.0)));
 
+    // // check accuracy for test set
+    // float *d_Z1Test, *d_Z2Test, *d_activationTest, *d_resultTest, *d_resultTestT;
+
+    // float *d_accuracyTest;
+    // printf("Testing\n");
+
+    // printf("Reading test data from file %s\n", filename_test);
+    // printf("Reading test labels from file %s\n", test_labels);
+
+    // testing_input = readImageData(filename_test, test_size * nFeatures);
+    // testing_labels = readLabels(test_labels, test_size, nOutput);
+
+
+    // cudaMalloc((void **)&d_test, test_size * nFeatures * sizeof(float));
+    // cudaMalloc((void **)&d_testT, test_size * nFeatures * sizeof(float));
+    // cudaMalloc((void **)&d_accuracyTest, test_size * sizeof(float));
+    // cudaMalloc((void **)&d_testLabels, test_size * nOutput * sizeof(float));
+    
+
+    // cudaMalloc((void **)&d_Z1Test, test_size * nHiddenLayer * sizeof(float));
+    // cudaMalloc((void **)&d_Z2Test, test_size * nOutput * sizeof(float));
+    // cudaMalloc((void **)&d_activationTest, test_size * nOutput * sizeof(float));
+    // cudaMalloc((void **)&d_resultTest, test_size * nOutput * sizeof(float));
+    // cudaMalloc((void **)&d_resultTestT, test_size * nOutput * sizeof(float));
+
+    // cudaMemcpy(d_test, testing_input, test_size * nFeatures * sizeof(float), cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_testLabels, testing_labels, test_size * nOutput * sizeof(float), cudaMemcpyHostToDevice);
+
+    // // transpose
+    // transpose<<<32, 1024>>>(test_size, nFeatures, d_test, d_testT);
+    
+    // float* resultTest = (float*)malloc(test_size * nOutput * sizeof(float));
+
+    // // perform forward propagation
+
+    // // compute Z1 in device
+    // // C(N × M) ← A(N × P) · B (P × M)
+    // int nBlocksN = (nHiddenLayer + nThreads - 1) / nThreads;
+    // int nBlocksM = (test_size + nThreads - 1) / nThreads;
+
+    // dim3 dimGrid(nBlocksM, nBlocksN);
+    // dim3 dimBlock(nThreads, nThreads);
+
+    // matMult<<<dimGrid, dimBlock>>>(nHiddenLayer, test_size, nFeatures, d_weights, d_testT, d_Z1Test);
+
+    // // compute activation in device
+    // reLU<<<nHiddenLayer, 1024>>>(nHiddenLayer*test_size, d_Z1Test, d_activationTest);
+
+    // // compute Z2 in device
+    // // C(N × M) ← A(N × P) · B (P × M)
+    // nBlocksN = (nOutput + nThreads - 1) / nThreads;
+    // nBlocksM = (test_size + nThreads - 1) / nThreads;
+
+    // dimGrid = dim3(nBlocksM, nBlocksN);
+
+    // matMult<<<dimGrid, dimBlock>>>(nOutput, test_size, nHiddenLayer, d_weightsOutput, d_activationTest, d_Z2Test);
+
+    // // compute result in device
+    // globalSoftmaxPrimitive<<<32, 1024>>>(nOutput, test_size, d_Z2Test, d_resultTest);
+
+    // transpose<<<32, 1024>>>(nOutput, test_size, d_resultTest, d_resultTestT);
+
+    // cudaMemcpy(resultTest, d_resultTestT, test_size * nOutput * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // // print firsts 10 results
+
+    // // for (int i = 0; i < 10; i++)
+    // // {
+    // //     printf("Result %d: ", i);
+    // //     for (int j = 0; j < nOutput; j++)
+    // //     {
+    // //         printf("%f ", resultTest[i * nOutput + j]);
+    // //     }
+    // //     printf("\n");
+    // // }
+
+    // // // print first 10 labels
+    // // for (int i = 0; i < 10; i++)
+    // // {
+    // //     printf("Label %d: ", i);
+    // //     for (int j = 0; j < nOutput; j++)
+    // //     {
+    // //         printf("%f ", testing_labels[i * nOutput + j]);
+    // //     }
+    // //     printf("\n");
+    // // }
+
+    // // compute accuracy
+    // accuracy<<<test_size, 1024>>>(test_size, nOutput, d_resultTestT, d_testLabels, d_accuracyTest);
+
+    // float *h_accuracyTest = (float *)malloc(sizeof(float)*test_size);
+
+    // cudaMemcpy(h_accuracyTest, d_accuracyTest, sizeof(float), cudaMemcpyDeviceToHost);
+    // float test_acc = 0.0f;
+    // for (int j = 0; j < test_size; j++)
+    // {   
+    //     if (h_accuracyTest[j] != 0.0f) {
+    //         printf("Accuracy %d: %f\n", j, h_accuracyTest[j]);
+    //     }
+    //     test_acc += h_accuracyTest[j];
+    // }
+    // printf("Accuracy in the test set: %f\n", test_acc);
+    // printf("Accuracy in the test set: %f\n", test_acc/(float)test_size);
+    // cudaError_t err = cudaGetLastError();
+    //         if (err != cudaSuccess)
+    //         {
+    //             printf("Error: %s\n", cudaGetErrorString(err));
+    //             exit(-1);
+    //         }
+
+    // allocate memory for device
+
     // free memory
     free(h_input);
     free(h_inputT);
@@ -446,7 +533,11 @@ int main(int argc, char **argv)
     free(h_dW1);
     free(training_input);
     free(training_labels);
+    free(testing_input);
+    free(testing_labels);
     free(h_resultT);
+    free(h_accuracy);
+    
 
     // free device memory
     cudaFree(d_input);
@@ -468,6 +559,18 @@ int main(int argc, char **argv)
     cudaFree(d_dZ1);
     cudaFree(d_dgZ1);
     cudaFree(d_dW1);
+    cudaFree(d_accuracy);
+    // cudaFree(d_test);
+    // cudaFree(d_testT);
+    // cudaFree(d_testLabels);
+    // cudaFree(d_Z1Test);
+    // cudaFree(d_Z2Test);
+    // cudaFree(d_activationTest);
+    // cudaFree(d_resultTest);
+    // cudaFree(d_resultTestT);
+
+    
+    
 
     return 0;
 }
